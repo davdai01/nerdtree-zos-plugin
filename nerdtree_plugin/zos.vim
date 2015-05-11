@@ -211,6 +211,12 @@ function! s:InZOSFolder(node)
   return {}
 endfunction
 
+autocmd FileType nerdtree call s:AddHighlighting()
+function! s:AddHighlighting()
+  syn match NERDTreezOS #\[-zOS-\]#
+  hi def link NERDTreezOS statement
+endfunction
+
 call g:NERDTreePathNotifier.AddListener("init", "NERDTreeZOSRefreshListener")
 call g:NERDTreePathNotifier.AddListener("refresh", "NERDTreeZOSRefreshListener")
 call g:NERDTreePathNotifier.AddListener("refreshFlags", "NERDTreeZOSRefreshListener")
