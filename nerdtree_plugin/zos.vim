@@ -6,11 +6,33 @@ let g:loaded_nerdtree_zos = 1
 
 let NERDTreeIgnore = ['\.zos.connection$']
 
-" ruby $ZOS_workspace = VIM::ZOS::Workspace.new
-
 call NERDTreeAddMenuItem({'text': '(z)Add a zOS Connection', 'shortcut': 'z', 'callback': 'NERDTreeAddConnection'})
 call NERDTreeAddMenuItem({'text': '(f)Add a PDS/folder', 'shortcut': 'f', 'callback': 'NERDTreeAddFolder'})
 call NERDTreeAddMenuItem({'text': '(l)st members', 'shortcut': 'l', 'callback': 'NERDTreeListMembers'})
+
+com! JCLSubmit call SubJCL(expand("%:p"))
+function! SubJCL(fname)
+  call g:NERDTree.CursorToTreeWin()
+  " try
+    let node = b:NERDTreeRoot.findNode(g:NERDTreePath.New(a:fname))
+    let zOSNode = s:InZOSFolder(node)
+    if !empty(zOSNode)
+      ruby << EOF
+      zos_path = VIM::evaluate('zOSNode.path.str()')
+      curr_path = VIM::evaluate('node.path.str()')
+      conn = VIM::ZOS::Connection.new
+      conn.load_from_path(zos_path)
+      relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
+      parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
+      member = parts.pop
+      folder = parts.join('/')
+      conn.submit_jcl(folder,member)
+EOF
+    endif
+  " catch
+  "   echo 'submit error'
+  " endtry
+endfunction
 
 function! NERDTreeAddConnection()
   let name = input('Input the connection name: ')
@@ -18,7 +40,7 @@ function! NERDTreeAddConnection()
   let user = input('Input the user id: ')
   let password = input('Input the password: ')
   ruby << EOF
-    VIM::ZOS::Connection.add_connection("./#{VIM::evaluate("name")}",VIM::evaluate("host"),VIM::evaluate("user"),VIM::evaluate("password"))
+  VIM::ZOS::Connection.add_connection("./#{VIM::evaluate("name")}",VIM::evaluate("host"),VIM::evaluate("user"),VIM::evaluate("password"))
 EOF
 endfunction
 
@@ -28,14 +50,14 @@ function! NERDTreeAddFolder()
   let zOSNode = s:InZOSFolder(currentNode)
   if !empty(zOSNode)
     ruby << EOF
-      name = VIM::evaluate('name')
-      zos_folder = VIM::evaluate('zOSNode.path.str()')
-      if !name.include?('/')
-        name.gsub!('.','/').upcase!
-      end
-      dest = "#{zos_folder}/#{name}"
-      FileUtils.mkdir_p dest
-      puts "created #{dest}"
+    name = VIM::evaluate('name')
+    zos_folder = VIM::evaluate('zOSNode.path.str()')
+    if !name.include?('/')
+      name.gsub!('.','/').upcase!
+    end
+    dest = "#{zos_folder}/#{name}"
+    FileUtils.mkdir_p dest
+    puts "created #{dest}"
 EOF
   endif
 endfunction
@@ -74,7 +96,7 @@ function! NERDTreeListMembers()
       prompt = part.join + "Please input the member name: (or press ENTER to page through the member list)\n"
       VIM::command("let result = input('#{prompt}')")
       result = VIM::evaluate('result')
-      # puts "result: #{result}"
+      puts "result: #{result}"
       if result != ''
         conn.get_member(folder,result)
         found = true
@@ -109,21 +131,21 @@ function! NERDTreeZOSRefreshListener(event)
   " echo params
 
   ruby << EOF
-    require 'pathname'
-    path_name = VIM::evaluate('path.str()')
-    if Pathname(path_name).directory?
-      found = false
-      Pathname(path_name).each_child do |c|
-        if c.basename().to_s == '.zos.connection'
-          VIM::command('call path.flagSet.clearFlags("zos")')
-          VIM::command('call path.flagSet.addFlag("zos", "-zOS-")')
-          found = true
-        end
-      end
-      if !found
-        VIM::command('call path.flagSet.clearFlags("zos")')
-      end
+  require 'pathname'
+  path_name = VIM::evaluate('path.str()')
+  if Pathname(path_name).directory?
+    found = false
+    Pathname(path_name).each_child do |c|
+    if c.basename().to_s == '.zos.connection'
+      VIM::command('call path.flagSet.clearFlags("zos")')
+      VIM::command('call path.flagSet.addFlag("zos", "-zOS-")')
+      found = true
     end
+  end
+  if !found
+    VIM::command('call path.flagSet.clearFlags("zos")')
+  end
+end
 EOF
 endfunction
 
@@ -252,17 +274,33 @@ module VIM
           return ftp.ls
         end
       end
+
+      def submit_jcl(relative_path,member)
+        src_folder = "#{@path}/#{relative_path}"
+        src = "#{src_folder}/#{member}"
+
+        Net::FTP.open(@host) do |ftp|
+          ftp.login(@user, @password)
+          ftp.sendcmd('SITE FILETYPE=JES')
+          ftp.puttextfile(src)
+        end
+        puts "Submitted #{src}"
+      end
+
       def get_member(relative_path,member)
+        puts "path #{relative_path}"
+        puts "member #{member}"
         src = ''
         if is_pds?(relative_path)
           src = "'#{relative_path.gsub('/','.')}(#{member})'"
-          member = member.upcase!
+          member.upcase!
         else
           src = "/#{relative_path}/#{member}"
         end
         dest_folder = "#{@path}/#{relative_path}"
         FileUtils.mkdir_p(dest_folder) unless File.exist?(dest_folder)
         dest = "#{dest_folder}/#{member}"
+        puts "dest: #{dest}"
         Net::FTP.open(@host) do |ftp|
           ftp.login(@user, @password)
           ftp.gettextfile(src, dest)
@@ -294,5 +332,5 @@ module VIM
   end
 end
 
-
 EOF
+
