@@ -1,16 +1,16 @@
 " rubyfile ./zos_explorer.rb
-if exists('g:loaded_nerdtree_zos')
-  finish
-endif
-let g:loaded_nerdtree_zos = 1
+" if exists('g:loaded_nerdtree_zos')
+"   finish
+" endif
+" let g:loaded_nerdtree_zos = 1
 
 let NERDTreeIgnore = ['\.zos.connection$']
 call NERDTreeAddMenuSeparator({'isActiveCallback': 'NERDTreezOSEnabled'})
-call NERDTreeAddMenuItem({'text': '(z)Add a zOS Connection', 'shortcut': 'z', 'callback': 'NERDTreeAddConnection'})
-call NERDTreeAddMenuItem({'text': '(f)Add a PDS/folder', 'shortcut': 'f', 'callback': 'NERDTreeAddFolder'})
-call NERDTreeAddMenuItem({'text': '(l)st members', 'shortcut': 'l', 'callback': 'NERDTreeListMembers'})
+call NERDTreeAddMenuItem({'text': '(z)Add a zOS Connection', 'shortcut': 'z', 'isActiveCallback': 'NERDTreezOSEnabled', 'callback': 'NERDTreeAddConnection'})
+call NERDTreeAddMenuItem({'text': '(f)Add a PDS/folder', 'shortcut': 'f', 'isActiveCallback': 'NERDTreezOSEnabled', 'callback': 'NERDTreeAddFolder'})
+call NERDTreeAddMenuItem({'text': '(l)st members', 'shortcut': 'l', 'isActiveCallback': 'NERDTreezOSEnabled',  'callback': 'NERDTreeListMembers'})
 
-function! NERDTreezOSEnabled
+function! NERDTreezOSEnabled()
   let currentNode = g:NERDTreeFileNode.GetSelected()
   let zOSNode = s:InZOSFolder(currentNode)
   if !empty(zOSNode)
