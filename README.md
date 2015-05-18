@@ -1,7 +1,7 @@
 nerdtree-zos-plugin
 ===================
 
-A plugin of NERDTree for editing files from IBM mainframe zOS system. Works with the **LATEST** version
+A plugin of NERDTree for editing files from IBM mainframe z/OS system. Works with the **LATEST** version
 of NERDTree.
 
 ## Requirements
@@ -22,13 +22,13 @@ For Vundle
 The following functions are added to NERDTree menu:
 ```
 --------------------
-(z)Add a zOS Connection
+(z)Add a z/OS Connection
 (f)Add a PDS/folder
 (l)ist members
 ```
 
 * You can add a connection to z/OS FTP server, once done, you will see a folder
-  created for the connection and the folder is having a *[-zOs-]* tag
+  created for the connection and the folder is having a *[-zOS-]* tag
 * Add a PDS or Unix folder from your mainframe z/OS system, and this will be mapped
   to a local folder in your [-zOS-] connection folder
 * Use *(l)ist member* function to list through members in the PDS or folder, and choose to edit a

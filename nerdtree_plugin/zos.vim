@@ -6,7 +6,7 @@ let g:loaded_nerdtree_zos = 1
 
 let NERDTreeIgnore = ['\.zos.connection$']
 call NERDTreeAddMenuSeparator()
-call NERDTreeAddMenuItem({'text': '(z) Add a zOS Connection', 'shortcut': 'z', 'callback': 'NERDTreeAddConnection'})
+call NERDTreeAddMenuItem({'text': '(z) Add a z/OS Connection', 'shortcut': 'z', 'callback': 'NERDTreeAddConnection'})
 call NERDTreeAddMenuItem({'text': '(f) Add a PDS/folder', 'shortcut': 'f', 'isActiveCallback': 'NERDTreezOSEnabled', 'callback': 'NERDTreeAddFolder'})
 call NERDTreeAddMenuItem({'text': '(l) List members', 'shortcut': 'l', 'isActiveCallback': 'NERDTreezOSEnabled',  'callback': 'NERDTreeListMembers'})
 
