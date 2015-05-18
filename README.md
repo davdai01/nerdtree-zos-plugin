@@ -22,9 +22,9 @@ For Vundle
 The following functions are added to NERDTree menu:
 ```
 --------------------
-(z)Add a z/OS Connection
-(f)Add a PDS/folder
-(l)ist members
+(z) Add a z/OS Connection
+(f) Add a PDS/folder
+(l) List members
 ```
 
 * You can add a connection to z/OS FTP server, once done, you will see a folder
