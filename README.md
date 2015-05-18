@@ -5,7 +5,7 @@ A plugin of NERDTree for editing files from IBM mainframe z/OS system. Works wit
 of NERDTree.
 
 ## Requirements
-* GVim 7.0+ with +ruby or +ruby/dyn
+* Vim 7.0+ with +ruby or +ruby/dyn
 * Ruby 1.9+
 * z/OS FTP server
 
