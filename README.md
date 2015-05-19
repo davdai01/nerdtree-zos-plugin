@@ -31,7 +31,7 @@ The following functions are added to NERDTree menu:
   created for the connection and the folder is having a *[-zOS-]* tag
 * Add a PDS or Unix folder from your mainframe z/OS system, and this will be mapped
   to a local folder in your [-zOS-] connection folder
-* Use *(l)ist member* function to list through members in the PDS or folder, and choose to edit a
+* Use *(L) list member* function to list through members in the PDS or folder, and choose to edit a
   member file
 * You can then edit the file, and the changes will be automatically uploaded to
   mainframe whenever you save it
