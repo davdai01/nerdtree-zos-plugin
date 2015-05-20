@@ -327,7 +327,7 @@ module VIM
         src_folder = "#{@path}/#{relative_path}"
         dest = ''
         if is_pds?(relative_path)
-          dest = "'#{relative_path.gsub('/','.')}(#{member})'"
+          dest = "'#{relative_path.gsub('/','.')}(#{member.split('.')[0]})'"
         else
           dest = "/#{relative_path}/#{member}"
         end
