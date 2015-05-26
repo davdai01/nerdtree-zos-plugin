@@ -4,7 +4,9 @@ if exists('g:loaded_nerdtree_zos')
 endif
 let g:loaded_nerdtree_zos = 1
 
-let NERDTreeIgnore = ['\.zos.connection$']
+" let NERDTreeIgnore = ['\.zos.connection$']
+add(NERDTreeIgnore,'\.zos.connection$')
+
 call NERDTreeAddMenuSeparator()
 call NERDTreeAddMenuItem({'text': '(z) Add a z/OS Connection', 'shortcut': 'z', 'callback': 'NERDTreeAddConnection'})
 call NERDTreeAddMenuItem({'text': '(f) Add a PDS/folder', 'shortcut': 'f', 'isActiveCallback': 'NERDTreezOSEnabled', 'callback': 'NERDTreeAddFolder'})
