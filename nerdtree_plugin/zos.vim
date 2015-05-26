@@ -4,7 +4,6 @@ if exists('g:loaded_nerdtree_zos')
 endif
 let g:loaded_nerdtree_zos = 1
 
-" let NERDTreeIgnore = ['\.zos.connection$']
 call add(NERDTreeIgnore,'\.zos.connection$')
 
 call NERDTreeAddMenuSeparator()
