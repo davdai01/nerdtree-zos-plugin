@@ -5,7 +5,7 @@ endif
 let g:loaded_nerdtree_zos = 1
 
 " let NERDTreeIgnore = ['\.zos.connection$']
-add(NERDTreeIgnore,'\.zos.connection$')
+call add(NERDTreeIgnore,'\.zos.connection$')
 
 call NERDTreeAddMenuSeparator()
 call NERDTreeAddMenuItem({'text': '(z) Add a z/OS Connection', 'shortcut': 'z', 'callback': 'NERDTreeAddConnection'})
