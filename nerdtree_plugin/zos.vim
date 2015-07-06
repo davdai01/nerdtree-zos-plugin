@@ -234,7 +234,7 @@ call g:NERDTreePathNotifier.AddListener("refreshFlags", "NERDTreeZOSRefreshListe
 ruby << EOF
 
 require 'net/ftp'
-require 'FileUtils'
+require 'fileutils'
 require 'yaml'
 require 'find'
 require 'pathname'
