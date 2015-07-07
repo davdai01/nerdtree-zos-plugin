@@ -285,6 +285,7 @@ module VIM
           folder = "/#{folder}"
         end
         Net::FTP.open(@host) do |ftp|
+          ftp.passive = true
           ftp.login(@user, @password)
           ftp.chdir(folder)
           return ftp.ls
@@ -296,6 +297,7 @@ module VIM
         src = "#{src_folder}/#{member}"
 
         Net::FTP.open(@host) do |ftp|
+          ftp.passive = true
           ftp.login(@user, @password)
           ftp.sendcmd('SITE FILETYPE=JES')
           ftp.puttextfile(src)
@@ -318,6 +320,7 @@ module VIM
         dest = "#{dest_folder}/#{member}"
         puts "dest: #{dest}"
         Net::FTP.open(@host) do |ftp|
+          ftp.passive = true
           ftp.login(@user, @password)
           ftp.gettextfile(src, dest)
         end
@@ -336,6 +339,7 @@ module VIM
         # puts "src: #{src}"
         # puts "dest: #{dest}"
         Net::FTP.open(@host) do |ftp|
+          ftp.passive = true
           ftp.login(@user, @password)
           ftp.puttextfile(src, dest)
         end
