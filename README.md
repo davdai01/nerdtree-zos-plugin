@@ -11,7 +11,7 @@ of [NERDTree](https://github.com/scrooloose/nerdtree).
 
 ## Installation
 
-[Vundle.vim](https://github.com/VundleVim/Vundle.vim) is recommended for
+[Vundle.vim](https://github.com/VundleVim/Vundle.vim) is recommended to use for
 installing nerdtree-zos-plugin
 
 `Plugin 'scrooloose/nerdtree'`
