@@ -160,7 +160,6 @@ EOF
 endfunction
 
 augroup nerdtreezosplugin
-  autocmd!
   autocmd BufWritePost * call s:ZOSFileUpdate(expand("%:p"))
 augroup END
 
@@ -245,9 +244,9 @@ module VIM
       attr_accessor :path, :host, :user, :password
       def initialize
         @path = ''
-        @host = 'FTS1'
-        @user = 'DXD'
-        @password = 'POLYCOM'
+        @host = ''
+        @user = ''
+        @password = ''
       end
 
 
