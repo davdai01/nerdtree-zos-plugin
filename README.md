@@ -34,6 +34,6 @@ The following functions are added to NERDTree menu:
 * Use *(L) list member* function to list through members in the PDS or folder, and choose to edit a
   member file
 * You can then edit the file, and the changes will be automatically uploaded to
-  mainframe whenever you save it
+  mainframe whenever you save it in Vim
 * if you are editing JCL file, you can submit this directly to mainframe from
   Vim using command :JCLSubmit
