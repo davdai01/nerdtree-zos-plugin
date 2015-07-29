@@ -2,7 +2,7 @@ nerdtree-zos-plugin
 ===================
 
 A plugin of NERDTree for editing files from IBM mainframe z/OS system. Works with the **LATEST** version
-of NERDTree.
+of [NERDTree](https://github.com/scrooloose/nerdtree).
 
 ## Requirements
 * Vim 7.0+ with +ruby or +ruby/dyn
@@ -11,7 +11,8 @@ of NERDTree.
 
 ## Installation
 
-For Vundle
+[Vundle.vim](https://github.com/VundleVim/Vundle.vim) is recommended for
+installing nerdtree-zos-plugin
 
 `Plugin 'scrooloose/nerdtree'`
 
