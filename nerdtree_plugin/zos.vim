@@ -329,10 +329,16 @@ module VIM
       def put_member(relative_path,member)
         src_folder = "#{@path}/#{relative_path}"
         dest = ''
+        ascii = false
         if is_pds?(relative_path)
           dest = "'#{relative_path.gsub('/','.')}(#{member.split('.')[0]})'"
         else
-          dest = "/#{relative_path}/#{member}"
+          dest_member = member
+          if member.start_with?('-ascii-')
+            ascii = true
+            dest_member = member.gsub('-ascii-','')
+          end
+          dest = "/#{relative_path}/#{dest_member}"
         end
         src = "#{src_folder}/#{member}"
         # puts "src: #{src}"
@@ -340,6 +346,9 @@ module VIM
         Net::FTP.open(@host) do |ftp|
           ftp.passive = true
           ftp.login(@user, @password)
+          if ascii
+            ftp.sendcmd('SITE SBD=(ISO8859-1,ISO8859-1)')
+          end
           ftp.puttextfile(src, dest)
         end
         puts "Uploaded to #{dest}"
