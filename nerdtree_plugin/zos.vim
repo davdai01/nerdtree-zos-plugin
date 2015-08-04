@@ -343,6 +343,13 @@ module VIM
       def get_member(relative_path,member)
         puts "path #{relative_path}"
         puts "member #{member}"
+        dest_member = member
+        if member.start_with?('-read only-')
+          member = member.gsub('-read only-','')
+        end
+        if member.start_with?('-ascii-')
+          member = member.gsub('-ascii-','')
+        end
         src = ''
         if is_pds?(relative_path)
           src = "'#{relative_path.gsub('/','.')}(#{member.split('.')[0]})'"
@@ -352,7 +359,7 @@ module VIM
         end
         dest_folder = "#{@path}/#{relative_path}"
         FileUtils.mkdir_p(dest_folder) unless File.exist?(dest_folder)
-        dest = "#{dest_folder}/#{member}"
+        dest = "#{dest_folder}/#{dest_member}"
         puts "dest: #{dest}"
         Net::FTP.open(@host) do |ftp|
           ftp.passive = true
