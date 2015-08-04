@@ -350,12 +350,13 @@ module VIM
         if member.start_with?('-ascii-')
           member = member.gsub('-ascii-','')
         end
+        source_member = member
         src = ''
         if is_pds?(relative_path)
-          src = "'#{relative_path.gsub('/','.')}(#{member.split('.')[0]})'"
-          member.upcase!
+          source_member = member.split('.')[0].upcase
+          src = "'#{relative_path.gsub('/','.')}(#{source_member})'"
         else
-          src = "/#{relative_path}/#{member}"
+          src = "/#{relative_path}/#{source_member}"
         end
         dest_folder = "#{@path}/#{relative_path}"
         FileUtils.mkdir_p(dest_folder) unless File.exist?(dest_folder)
