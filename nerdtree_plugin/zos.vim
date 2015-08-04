@@ -327,6 +327,10 @@ module VIM
       end
 
       def put_member(relative_path,member)
+        if member.start_with?('-read only-')
+          puts 'read only, not uploaded'
+          return
+        end
         src_folder = "#{@path}/#{relative_path}"
         dest = ''
         ascii = false
