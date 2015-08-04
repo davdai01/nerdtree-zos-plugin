@@ -10,6 +10,7 @@ call NERDTreeAddMenuSeparator()
 call NERDTreeAddMenuItem({'text': '(z) Add a z/OS Connection', 'shortcut': 'z', 'callback': 'NERDTreeAddConnection'})
 call NERDTreeAddMenuItem({'text': '(f) Add a PDS/folder', 'shortcut': 'f', 'isActiveCallback': 'NERDTreezOSEnabled', 'callback': 'NERDTreeAddFolder'})
 call NERDTreeAddMenuItem({'text': '(l) List members', 'shortcut': 'l', 'isActiveCallback': 'NERDTreezOSEnabled',  'callback': 'NERDTreeListMembers'})
+call NERDTreeAddMenuItem({'text': '(r) Refresh(re-download) the member', 'shortcut': 'r', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreeGetMember'})
 
 function! NERDTreezOSEnabled()
   let currentNode = g:NERDTreeFileNode.GetSelected()
@@ -18,6 +19,21 @@ function! NERDTreezOSEnabled()
     return 1
   endif
   return 0
+endfunction
+
+function! NERDTreezOSMember()
+  let currentNode = g:NERDTreeFileNode.GetSelected()
+  let zOSNode = s:InZOSFolder(currentNode)
+  let result = 0
+  if !empty(zOSNode)
+    ruby << EOF
+    curr_path = VIM::evaluate('currentNode.path.str()')
+    if !Pathname(curr_path).directory?
+      VIM::command('let result = 1')
+    end
+EOF
+  endif
+  return result
 endfunction
 
 com! JCLSubmit call SubJCL(expand("%:p"))
@@ -68,6 +84,26 @@ function! NERDTreeAddFolder()
     dest = "#{zos_folder}/#{name}"
     FileUtils.mkdir_p dest
     puts "created #{dest}"
+EOF
+  endif
+endfunction
+
+function! NERDTreeGetMember()
+  let currentNode = g:NERDTreeFileNode.GetSelected()
+  let zOSNode = s:InZOSFolder(currentNode)
+  if !empty(zOSNode)
+    " echo 'found'
+    " echo zOSNode.path.str()
+    ruby << EOF
+    zos_path = VIM::evaluate('zOSNode.path.str()')
+    curr_path = VIM::evaluate('currentNode.path.str()')
+    conn = VIM::ZOS::Connection.new
+    conn.load_from_path(zos_path)
+    relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
+    parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
+    member = parts.pop
+    folder = parts.join('/')
+    conn.get_member(folder,member)
 EOF
   endif
 endfunction
@@ -309,7 +345,7 @@ module VIM
         puts "member #{member}"
         src = ''
         if is_pds?(relative_path)
-          src = "'#{relative_path.gsub('/','.')}(#{member})'"
+          src = "'#{relative_path.gsub('/','.')}(#{member.split('.')[0]})'"
           member.upcase!
         else
           src = "/#{relative_path}/#{member}"
