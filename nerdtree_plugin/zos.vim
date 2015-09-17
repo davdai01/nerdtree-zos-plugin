@@ -365,6 +365,10 @@ augroup nerdtreezosplugin
 augroup END
 
 function! s:ZOSFileUpdate(fname)
+  if exists('g:loaded_syntastic_plugin')
+    call SyntasticCheck()
+  endif
+
   " echo a:fname
   if !g:NERDTree.IsOpen()
     return
