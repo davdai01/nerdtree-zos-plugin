@@ -141,16 +141,21 @@ function! NERDTreeSDSFGet()
       # VIM::evaluate('let currentNode = currentNode.parent')
     end
     job = parts.pop
-    conn.sdsf_get(job, step)
-    if !Pathname(curr_path).directory?
-      VIM::command("call currentNode.open({'where': 'p'})")
-      VIM::command("call s:echo('Output retreived')")
+    msg = conn.sdsf_get(job, step)
+    if msg == ''
+      # VIM::command("call s:echo('Member uploaded')")
+      if !Pathname(curr_path).directory?
+        VIM::command("call currentNode.open({'where': 'p'})")
+        VIM::command("call s:echo('Output retreived')")
+      else
+        VIM::command('call currentNode.refresh()')
+        VIM::command('call currentNode.open()')
+        VIM::command('call b:NERDTree.render()')
+        VIM::command("call s:echo('Job output list retreived')")
+        # VIM::command('redraw')
+      end
     else
-      VIM::command('call currentNode.refresh()')
-      VIM::command('call currentNode.open()')
-      VIM::command('call b:NERDTree.render()')
-      VIM::command("call s:echo('Job output list retreived')")
-      # VIM::command('redraw')
+      VIM::command("call s:echoWarning('#{msg}')")
     end
 EOF
   endif
@@ -201,7 +206,7 @@ function! NERDTreeAddFolder()
     end
     dest = "#{zos_folder}/#{name}"
     FileUtils.mkdir_p dest
-    puts "created #{dest}"
+    # puts "created #{dest}"
 EOF
     call zOSNode.refresh()
     call b:NERDTree.render()
@@ -270,11 +275,11 @@ function! NERDTreeListMembers()
       prompt = part.join + "Please input the member name: (or press ENTER to page through the member list)\n"
       VIM::command("let result = input('#{prompt}')")
       result = VIM::evaluate('result')
-      puts "result: #{result}"
+      # puts "result: #{result}"
       if result != ''
         if result[0,1] == "="
           idx = result[1..-1]
-          puts "idx: #{idx}"
+          # puts "idx: #{idx}"
           if idx.upcase == 'X'
             found = true
             break
@@ -384,10 +389,13 @@ function! s:ZOSFileUpdate(fname)
       parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
       member = parts.pop
       folder = parts.join('/')
-      conn.put_member(folder,member)
-      VIM::command('redraw')
+      msg = conn.put_member(folder,member)
+      if msg == ''
+        VIM::command("call s:echo('Member uploaded')")
+      else
+        VIM::command("call s:echoWarning('#{msg}')")
+      end
 EOF
-      call s:echo('Member uploaded')
     endif
 "     let node = node.parent
 "     while !empty(node)
@@ -544,7 +552,7 @@ module VIM
         @host = hash['host']
         @user = hash['user']
         @password = hash['password']
-        puts "loaded from #{file_name}"
+        # puts "loaded from #{file_name}"
       end
 
       def list_folder(folder)
@@ -596,7 +604,7 @@ module VIM
             FileUtils.mkdir_p(job_folder)
           end
         end
-        puts 'SDSF list refreshed'
+        # puts 'SDSF list refreshed'
         return sdsf_folder
       end
 
@@ -646,12 +654,12 @@ module VIM
                 end
               end
             else
-              puts "#{job_name} - #{job_id} is not in OUTPUT status"
-              return
+              return "#{job_name} - #{job_id} is not in OUTPUT status"
             end
           end
         end
-        puts "#{job_name} - #{job_id} Retrieved"
+        return ''
+        # puts "#{job_name} - #{job_id} Retrieved"
       end
 
       def sdsf_del(member)
@@ -670,7 +678,7 @@ module VIM
         job_folder = "#{@path}/_spool/#{member}"
         # puts job_folder
         FileUtils.remove_dir(job_folder, true)
-        puts "#{job_name} - #{job_id} deleted"
+        # puts "#{job_name} - #{job_id} deleted"
       end
 
       def submit_jcl(relative_path,member)
@@ -683,12 +691,12 @@ module VIM
           ftp.sendcmd('SITE FILETYPE=JES')
           ftp.puttextfile(src)
         end
-        puts "Submitted #{src}"
+        # puts "Submitted #{src}"
       end
 
       def get_member(relative_path,member)
-        puts "path #{relative_path}"
-        puts "member #{member}"
+        # puts "path #{relative_path}"
+        # puts "member #{member}"
         dest_member = member
         if member.start_with?('-read only-')
           member = member.gsub('-read only-','')
@@ -707,20 +715,19 @@ module VIM
         dest_folder = "#{@path}/#{relative_path}"
         FileUtils.mkdir_p(dest_folder) unless File.exist?(dest_folder)
         dest = "#{dest_folder}/#{dest_member}"
-        puts "dest: #{dest}"
+        # puts "dest: #{dest}"
         Net::FTP.open(@host) do |ftp|
           ftp.passive = true
           ftp.login(@user, @password)
           ftp.gettextfile(src, dest)
         end
-        puts "Downladed to #{dest}"
+        # puts "Downladed to #{dest}"
         return dest
       end
 
       def put_member(relative_path,member)
         if member.start_with?('-read only-')
-          puts 'read only, not uploaded'
-          return
+          return 'read only, not uploaded'
         end
         src_folder = "#{@path}/#{relative_path}"
         dest = ''
@@ -746,7 +753,8 @@ module VIM
           end
           ftp.puttextfile(src, dest)
         end
-        puts "Uploaded to #{dest}"
+        # puts "Uploaded to #{dest}"
+        return ''
       end
 
       private
