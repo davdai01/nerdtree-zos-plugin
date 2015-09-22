@@ -603,7 +603,7 @@ module VIM
               job_text = 'x'
             end
             # puts job_text
-            job_folder = "#{sdsf_folder}/#{i}_#{job_name}_#{job_text}_#{job_id}"
+            job_folder = "#{sdsf_folder}/#{i.to_s.rjust(2, '0')}_#{job_name}_#{job_text}_#{job_id}"
             # puts job_folder
             FileUtils.mkdir_p(job_folder)
           end
