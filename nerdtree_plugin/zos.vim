@@ -262,8 +262,19 @@ function! NERDTreeListMembers()
     page_count = 20
     message = ''
     new_path = ''
-    found = false
-    while lines.count - index > page_count
+    # found = false
+    status = 'not found'
+    result = ''
+    continue = true
+    # while lines.count - index > page_count
+    while continue
+      size = 0
+      if lines.count - index > page_count
+        size = page_count
+      else
+        size = lines.count - index
+        continue = false
+      end
       part = lines[index,page_count]
       i = 0
       part.collect! do |l|
@@ -272,7 +283,12 @@ function! NERDTreeListMembers()
         index = index + 1
         o
       end
-      prompt = part.join + "Please input the member name: (or press ENTER to page through the member list)\n"
+      if continue 
+        prompt = part.join + "Please input the member name: (or press ENTER to page through the member list)\n"
+      else
+        prompt = part.join + "End of list\nPlease input the member name:"
+      end
+
       VIM::command("let result = input('#{prompt}')")
       result = VIM::evaluate('result')
       # puts "result: #{result}"
@@ -281,47 +297,76 @@ function! NERDTreeListMembers()
           idx = result[1..-1]
           # puts "idx: #{idx}"
           if idx.upcase == 'X'
-            found = true
+            # found = true
+            status = "canceled"
             break
           end
           idx = idx.to_i
-          result = part[idx][5,8].strip()
+          if folder[0].upcase == folder[0]
+            # pds
+            if part[0][5,6] == 'Volume'
+              result = part[idx][61..-1].strip()
+            else
+              result = part[idx][5,8].strip()
+            end
+          else
+            # unix
+            result = part[idx][59..-1].strip()
+          end
         end
-        new_path = conn.get_member(folder,result)
-        found = true
+        if folder[0].upcase == folder[0]
+          # pds
+          if part[0][5,6] == 'Volume'
+            status = 'folder found'
+          else
+            status = 'member found'
+          end
+        else
+          # unix
+          if part[idx][5,1] == 'd'
+            status = "folder found"
+          else
+            status = "member found"
+          end
+        end
+        # new_path = conn.get_member(folder,result)
+        # found = true
+        # status = "member found"
+        
         break
       end
     end
-    if !found
-      part = lines[index,lines.count-index]
-      i = 0
-      part.collect! do |l|
-        o = i.to_s.ljust(5) + l + "\n"
-        i = i + 1
-        index = index + 1
-        o
+    if status == "member found"
+      new_path = conn.get_member(folder,result)
+      VIM::command("let newNodeName = '#{new_path}'")
+      VIM::command("call zOSNode.refresh()")
+      if Pathname(curr_path).directory?
+        VIM::command('call currentNode.open()')
       end
-      prompt = part.join + "End of list\nPlease input the member name:"
-      VIM::command("let result = input('#{prompt}')")
-      result = VIM::evaluate('result')
-      # puts "result: #{result}"
-      if result != ''
-        if result[0,1] == "="
-          idx = result[1..-1].to_i
-          result = part[idx][5,8].strip()
-        end
-        new_path = conn.get_member(folder,result)
+      VIM::command("call b:NERDTree.render()")
+      VIM::command("let newTreeNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(newNodeName))")
+      VIM::command("call newTreeNode.putCursorHere(1, 0)")
+      VIM::command("call s:echo('Member downloaded')")
+    elsif status == "canceled"
+      VIM::command("call s:echo('Operation canceled')")
+    elsif status == "folder found"
+      if !result.include?('/')
+        result.gsub!('.','/')
       end
+      dest = "#{curr_path}/#{result}"
+      FileUtils.mkdir_p dest
+      VIM::command("let newNodeName = '#{dest}'")
+      VIM::command("call zOSNode.refresh()")
+      if Pathname(curr_path).directory?
+        VIM::command('call currentNode.open()')
+      end
+      VIM::command("call b:NERDTree.render()")
+      VIM::command("let newTreeNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(newNodeName))")
+      VIM::command("call newTreeNode.putCursorHere(1, 0)")
+      # puts dest
+      VIM::command("call s:echo('Folder added')")
     end
-    VIM::command("let newNodeName = '#{new_path}'")
 EOF
-    call zOSNode.refresh()
-    call b:NERDTree.render()
-    let newTreeNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(newNodeName))
-    call newTreeNode.putCursorHere(1, 0)
-    " redraw
-    call s:echo('Member downloaded')
-    
   endif
 endfunction
 
@@ -401,28 +446,6 @@ function! s:ZOSFileUpdate(fname)
       end
 EOF
     endif
-"     let node = node.parent
-"     while !empty(node)
-"       " echo node.displayString()
-"       " echo node.path.str()
-"       ruby << EOF
-"       path_string = VIM::evaluate('node.displayString()')
-"       if path_string.include?('[-zOS-]')
-"         # echo node.path.str()
-"           path_save = VIM::evaluate('node_save.path.str()')
-"           path = VIM::evaluate('node.path.str()')
-"           relative_path = path_save.gsub("#{path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
-"           # puts relative_path: #{relative_path}
-"           conn = VIM::ZOS::Connection.new
-"           conn.load_from_path(path)
-"           parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
-"           member = parts.pop
-"           folder = parts.join('/')
-"           conn.put_member(folder,member)
-"       end
-" EOF
-"       let node = node.parent
-"     endwhile
   catch
   endtry
 
@@ -771,4 +794,3 @@ module VIM
 end
 
 EOF
-
