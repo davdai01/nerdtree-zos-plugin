@@ -26,6 +26,9 @@ The following functions are added to NERDTree menu:
 (z) Add a z/OS Connection
 (f) Add a PDS/folder
 (l) List members
+(s) Retrieve SDSF spool
+(i) Retrieve job output
+(p) Delete job output
 ```
 
 * You can add a connection to z/OS FTP server, once done, you will see a folder
@@ -38,4 +41,5 @@ The following functions are added to NERDTree menu:
   mainframe whenever you save it in Vim
 * if you are editing JCL file, you can submit this directly to mainframe from
   Vim using command :JCLSubmit
+* You can also view or delete the job output
 
