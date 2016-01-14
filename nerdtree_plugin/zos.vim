@@ -777,6 +777,8 @@ module VIM
           ftp.login(@user, @password)
           if ascii
             ftp.sendcmd('SITE SBD=(ISO8859-1,ISO8859-1)')
+          else
+            ftp.sendcmd('SITE SBD=(ISO8859-1,IBM-1047)')
           end
           ftp.puttextfile(src, dest)
         end
