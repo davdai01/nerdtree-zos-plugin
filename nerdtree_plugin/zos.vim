@@ -58,6 +58,22 @@ EOF
   return result
 endfunction
 
+function! s:promptToDelBuffer(bufnum, msg)
+    echo a:msg
+    if g:NERDTreeAutoDeleteBuffer || nr2char(getchar()) ==# 'y'
+        " 1. ensure that all windows which display the just deleted filename
+        " now display an empty buffer (so a layout is preserved).
+        " Is not it better to close single tabs with this file only ?
+        let s:originalTabNumber = tabpagenr()
+        let s:originalWindowNumber = winnr()
+        exec "tabdo windo if winbufnr(0) == " . a:bufnum . " | exec ':enew! ' | endif"
+        exec "tabnext " . s:originalTabNumber
+        exec s:originalWindowNumber . "wincmd w"
+        " 3. We don't need a previous buffer anymore
+        exec "bwipeout! " . a:bufnum
+    endif
+endfunction
+
 com! JCLSubmit call SubJCL(expand("%:p"))
 function! SubJCL(fname)
   call g:NERDTree.CursorToTreeWin()
@@ -268,6 +284,15 @@ function! NERDTreeDelMember()
 EOF
       call currentNode.delete()
       call NERDTreeRender()
+      "if the node is open in a buffer, ask the user if they want to
+      "close that buffer
+      let bufnum = bufnr("^".currentNode.path.str()."$")
+      if buflisted(bufnum)
+        let prompt = "\nNode deleted.\n\nThe file is open in buffer ". bufnum . (bufwinnr(bufnum) ==# -1 ? " (hidden)" : "") .". Delete this buffer? (yN)"
+        call s:promptToDelBuffer(bufnum, prompt)
+      endif
+
+      redraw
       call s:echo('Member deleted')
     endif
   else
