@@ -14,6 +14,7 @@ call NERDTreeAddMenuItem({'text': '(r) Refresh(re-download) the member', 'shortc
 call NERDTreeAddMenuItem({'text': '(s) Retrieve SDSF spool', 'shortcut': 's', 'isActiveCallback': 'NERDTreezOSEnabled',  'callback': 'NERDTreeSDSFList'})
 call NERDTreeAddMenuItem({'text': '(i) Retrieve job output', 'shortcut': 'i', 'isActiveCallback': 'NERDTreeSDSFEnabled',  'callback': 'NERDTreeSDSFGet'})
 call NERDTreeAddMenuItem({'text': '(p) Delete job output', 'shortcut': 'p', 'isActiveCallback': 'NERDTreeSDSFEnabled',  'callback': 'NERDTreeSDSFDel'})
+call NERDTreeAddMenuItem({'text': '(p) Delete remotely and locally', 'shortcut': 'p', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreeDelMembers'})
 
 function! NERDTreezOSEnabled2()
   let currentNode = g:NERDTreeFileNode.GetSelected()
@@ -235,6 +236,42 @@ function! NERDTreeGetMember()
     VIM::command('redraw')
 EOF
     call s:echo('Member refreshed')
+  endif
+endfunction
+
+function! NERDTreeDelMember()
+  let currentNode = g:NERDTreeFileNode.GetSelected()
+  let confirmed = 0
+  echo "Delete the current node\n" .
+     \ "======================================\n".
+     \ "Are you sure you wish to delete the node: \n".
+     \ "" . currentNode.path.str() . " (yN):"
+  let choice = nr2char(getchar())
+  let confirmed = choice ==# 'y'
+  if confirmed
+    let zOSNode = s:InZOSFolder2(currentNode)
+    if !empty(zOSNode)
+      " echo 'found'
+      " echo zOSNode.path.str()
+      ruby << EOF
+      zos_path = VIM::evaluate('zOSNode.path.str()')
+      curr_path = VIM::evaluate('currentNode.path.str()')
+      conn = VIM::ZOS::Connection.new
+      conn.load_from_path(zos_path)
+      relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
+      parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
+      member = parts.pop
+      folder = parts.join('/')
+      conn.del_member(folder,member)
+      # VIM::command("call currentNode.open({'where': 'p'})")
+      # VIM::command('redraw')
+EOF
+      call currentNode.delete()
+      call NERDTreeRender()
+      call s:echo('Member deleted')
+    endif
+  else
+    call s:echo("delete aborted")
   endif
 endfunction
 
@@ -750,6 +787,34 @@ module VIM
         end
         # puts "Downladed to #{dest}"
         return dest
+      end
+
+      def get_member(relative_path,member)
+        # puts "path #{relative_path}"
+        # puts "member #{member}"
+        dest_member = member
+        if member.start_with?('-read only-')
+          member = member.gsub('-read only-','')
+        end
+        if member.start_with?('-ascii-')
+          member = member.gsub('-ascii-','')
+        end
+        source_member = member
+        src = ''
+        if is_pds?(relative_path)
+          source_member = member.split('.')[0].upcase
+          src = "'#{relative_path.gsub('/','.')}(#{source_member})'"
+        else
+          src = "/#{relative_path}/#{source_member}"
+        end
+        # puts "dest: #{dest}"
+        Net::FTP.open(@host) do |ftp|
+          ftp.passive = true
+          ftp.login(@user, @password)
+          ftp.delete(src)
+        end
+        # puts "Downladed to #{dest}"
+        return src
       end
 
       def put_member(relative_path,member)
