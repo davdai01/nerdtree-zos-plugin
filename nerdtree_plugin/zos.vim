@@ -14,7 +14,7 @@ call NERDTreeAddMenuItem({'text': '(r) Refresh(re-download) the member', 'shortc
 call NERDTreeAddMenuItem({'text': '(s) Retrieve SDSF spool', 'shortcut': 's', 'isActiveCallback': 'NERDTreezOSEnabled',  'callback': 'NERDTreeSDSFList'})
 call NERDTreeAddMenuItem({'text': '(i) Retrieve job output', 'shortcut': 'i', 'isActiveCallback': 'NERDTreeSDSFEnabled',  'callback': 'NERDTreeSDSFGet'})
 call NERDTreeAddMenuItem({'text': '(p) Delete job output', 'shortcut': 'p', 'isActiveCallback': 'NERDTreeSDSFEnabled',  'callback': 'NERDTreeSDSFDel'})
-call NERDTreeAddMenuItem({'text': '(p) Delete remotely and locally', 'shortcut': 'p', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreeDelMembers'})
+call NERDTreeAddMenuItem({'text': '(p) Delete remotely and locally', 'shortcut': 'p', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreeDelMember'})
 
 function! NERDTreezOSEnabled2()
   let currentNode = g:NERDTreeFileNode.GetSelected()
@@ -789,7 +789,7 @@ module VIM
         return dest
       end
 
-      def get_member(relative_path,member)
+      def del_member(relative_path,member)
         # puts "path #{relative_path}"
         # puts "member #{member}"
         dest_member = member
