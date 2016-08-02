@@ -808,6 +808,7 @@ module VIM
         Net::FTP.open(@host) do |ftp|
           ftp.passive = true
           ftp.login(@user, @password)
+          ftp.sendcmd('SITE SBD=(IBM-1047,ISO8859-1)')
           ftp.gettextfile(src, dest)
         end
         # puts "Downladed to #{dest}"
@@ -867,9 +868,10 @@ module VIM
           ftp.login(@user, @password)
           if ascii
             ftp.sendcmd('SITE SBD=(ISO8859-1,ISO8859-1)')
-          # else
+          else
           #   ftp.sendcmd('SITE ENCODING=MBCS')
           #   ftp.sendcmd('SITE MBD=(UTF-8,IBM-1047)')
+            ftp.sendcmd('SITE SBD=(IBM-1047,ISO8859-1)')
           end
           ftp.puttextfile(src, dest)
         end
