@@ -220,10 +220,13 @@ function! NERDTreeAddFolder()
     zos_folder = VIM::evaluate('zOSNode.path.str()')
     if !name.include?('/')
       name.gsub!('.','/').upcase!
-      parts = zos_folder.split('/')
+      parts = name.split('/')
       new_parts = []
       parts.each do |part|
-        part.sub('$','_')
+        if part[0] == '$'
+          part[0] = '_'
+          puts part
+        end
         new_parts << part
       end
       name = parts.join('/')
@@ -254,17 +257,7 @@ function! NERDTreeGetMember()
     relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
     parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
     member = parts.pop
-    new_parts = []
-    if parts[0].upcase == parts[0]
-      parts.each do |part|
-        part.sub('_','$')
-        new_parts << part
-      end
-    else
-      new_parts = parts
-    end
-    folder = new_parts.join('/')
-    # folder = parts.join('/')
+    folder = parts.join('/')
     conn.get_member(folder,member)
     VIM::command("call currentNode.open({'where': 'p'})")
     VIM::command('redraw')
@@ -295,17 +288,7 @@ function! NERDTreeDelMember()
       relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
       parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
       member = parts.pop
-      new_parts = []
-      if parts[0].upcase == parts[0]
-        parts.each do |part|
-          part.sub('_','$')
-          new_parts << part
-        end
-      else
-        new_parts = parts
-      end
-      folder = new_parts.join('/')
-      # folder = parts.join('/')
+      folder = parts.join('/')
       conn.del_member(folder,member)
       # VIM::command("call currentNode.open({'where': 'p'})")
       # VIM::command('redraw')
@@ -346,17 +329,7 @@ function! NERDTreeListMembers()
     if !Pathname(curr_path).directory?
       parts.pop
     end
-    new_parts = []
-    if parts[0].upcase == parts[0]
-      parts.each do |part|
-        part.sub('_','$')
-        new_parts << part
-      end
-    else
-      new_parts = parts
-    end
-    folder = new_parts.join('/')
-    # folder = parts.join('/')
+    folder = parts.join('/')
     lines = conn.list_folder(folder)
     index = 0
     page_count = 20
@@ -537,17 +510,7 @@ function! s:ZOSFileUpdate(fname)
       relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
       parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
       member = parts.pop
-      new_parts = []
-      if parts[0].upcase == parts[0]
-        parts.each do |part|
-          part.sub('_','$')
-          new_parts << part
-        end
-      else
-        new_parts = parts
-      end
-      folder = new_parts.join('/')
-      # folder = parts.join('/')
+      folder = parts.join('/')
       msg = conn.put_member(folder,member)
       if msg == ''
         VIM::command("call s:echo('Member uploaded')")
@@ -695,6 +658,15 @@ module VIM
       def list_folder(folder)
         # puts "folder : #{folder}"
         if is_pds?(folder)
+          parts = folder.split(VIM::evaluate('g:NERDTreePath.Slash()'))
+          new_parts = []
+          parts.each do |part|
+            if part[0] == '_'
+              part[0] = '$'
+            end
+            new_parts << part
+          end
+          folder = new_parts.join('/')
           folder = "'#{folder.gsub('/','.')}'"
         else
           folder = "/#{folder}"
@@ -845,7 +817,16 @@ module VIM
         src = ''
         if is_pds?(relative_path)
           source_member = member.split('.')[0].upcase
-          src = "'#{relative_path.gsub('/','.')}(#{source_member})'"
+          parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
+          new_parts = []
+          parts.each do |part|
+            if part[0] == '_'
+              part[0] = '$'
+            end
+            new_parts << part
+          end
+          folder = new_parts.join('/')
+          src = "'#{folder.gsub('/','.')}(#{source_member})'"
         else
           src = "/#{relative_path}/#{source_member}"
         end
@@ -877,7 +858,17 @@ module VIM
         src = ''
         if is_pds?(relative_path)
           source_member = member.split('.')[0].upcase
-          src = "'#{relative_path.gsub('/','.')}(#{source_member})'"
+          # src = "'#{relative_path.gsub('/','.')}(#{source_member})'"
+          parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
+          new_parts = []
+          parts.each do |part|
+            if part[0] == '_'
+              part[0] = '$'
+            end
+            new_parts << part
+          end
+          folder = new_parts.join('/')
+          src = "'#{folder.gsub('/','.')}(#{source_member})'"
         else
           src = "/#{relative_path}/#{source_member}"
         end
@@ -899,7 +890,16 @@ module VIM
         dest = ''
         ascii = false
         if is_pds?(relative_path)
-          dest = "'#{relative_path.gsub('/','.')}(#{member.split('.')[0]})'"
+          parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
+          new_parts = []
+          parts.each do |part|
+            if part[0] == '_'
+              part[0] = '$'
+            end
+            new_parts << part
+          end
+          folder = new_parts.join('/')
+          dest = "'#{folder.gsub('/','.')}(#{member.split('.')[0]})'"
         else
           dest_member = member
           if member.start_with?('-ascii-')
