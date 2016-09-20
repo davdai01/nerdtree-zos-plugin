@@ -843,7 +843,7 @@ module VIM
         Net::FTP.open(@host) do |ftp|
           ftp.passive = true
           ftp.login(@user, @password)
-          " ftp.sendcmd("SITE SBD=(IBM-1047,ISO8859-1)")
+          # ftp.sendcmd("SITE SBD=(IBM-1047,ISO8859-1)")
           ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
           ftp.gettextfile(src, dest)
         end
@@ -926,11 +926,11 @@ module VIM
           ftp.passive = true
           ftp.login(@user, @password)
           ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
-          " if ascii
-          "   ftp.sendcmd('SITE SBD=(ISO8859-1,ISO8859-1)')
-          " else
-          "   ftp.sendcmd('SITE SBD=(IBM-1047,ISO8859-1)')
-          " end
+          # if ascii
+          #   ftp.sendcmd('SITE SBD=(ISO8859-1,ISO8859-1)')
+          # else
+          #   ftp.sendcmd('SITE SBD=(IBM-1047,ISO8859-1)')
+          # end
           ftp.puttextfile(src, dest)
         end
         # puts "Uploaded to #{dest}"
