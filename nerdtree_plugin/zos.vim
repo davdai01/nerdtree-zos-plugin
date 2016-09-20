@@ -807,11 +807,17 @@ module VIM
         # puts "path #{relative_path}"
         # puts "member #{member}"
         dest_member = member
+        encoding = 'IBM-037'
         if member.start_with?('-read only-')
           member = member.gsub('-read only-','')
         end
         if member.start_with?('-ascii-')
           member = member.gsub('-ascii-','')
+          encoding = 'ISO8859-1'
+        end
+        if member.start_with?('-1047-')
+          member = member.gsub('-1047-','')
+          encoding = 'IBM-1047'
         end
         source_member = member
         src = ''
@@ -837,7 +843,8 @@ module VIM
         Net::FTP.open(@host) do |ftp|
           ftp.passive = true
           ftp.login(@user, @password)
-          ftp.sendcmd('SITE SBD=(IBM-1047,ISO8859-1)')
+          " ftp.sendcmd("SITE SBD=(IBM-1047,ISO8859-1)")
+          ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
           ftp.gettextfile(src, dest)
         end
         # puts "Downladed to #{dest}"
@@ -888,7 +895,7 @@ module VIM
         end
         src_folder = "#{@path}/#{relative_path}"
         dest = ''
-        ascii = false
+        encoding = 'IBM-037'
         if is_pds?(relative_path)
           parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
           new_parts = []
@@ -903,8 +910,12 @@ module VIM
         else
           dest_member = member
           if member.start_with?('-ascii-')
-            ascii = true
             dest_member = member.gsub('-ascii-','')
+            encoding = 'ISO8859-1'
+          end
+          if member.start_with?('-1047-')
+            dest_member = member.gsub('-1047-','')
+            encoding = 'IBM-1047'
           end
           dest = "/#{relative_path}/#{dest_member}"
         end
@@ -914,13 +925,12 @@ module VIM
         Net::FTP.open(@host) do |ftp|
           ftp.passive = true
           ftp.login(@user, @password)
-          if ascii
-            ftp.sendcmd('SITE SBD=(ISO8859-1,ISO8859-1)')
-          else
-          #   ftp.sendcmd('SITE ENCODING=MBCS')
-          #   ftp.sendcmd('SITE MBD=(UTF-8,IBM-1047)')
-            ftp.sendcmd('SITE SBD=(IBM-1047,ISO8859-1)')
-          end
+          ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
+          " if ascii
+          "   ftp.sendcmd('SITE SBD=(ISO8859-1,ISO8859-1)')
+          " else
+          "   ftp.sendcmd('SITE SBD=(IBM-1047,ISO8859-1)')
+          " end
           ftp.puttextfile(src, dest)
         end
         # puts "Uploaded to #{dest}"
