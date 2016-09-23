@@ -844,7 +844,9 @@ module VIM
           ftp.passive = true
           ftp.login(@user, @password)
           # ftp.sendcmd("SITE SBD=(IBM-1047,ISO8859-1)")
-          ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
+          cmd = "SITE SBD=(#{encoding},ISO8859-1)"
+          puts cmd
+          ftp.sendcmd(cmd)
           ftp.gettextfile(src, dest)
         end
         # puts "Downladed to #{dest}"
@@ -896,6 +898,15 @@ module VIM
         src_folder = "#{@path}/#{relative_path}"
         dest = ''
         encoding = 'IBM-037'
+        dest_member = member
+        if member.start_with?('-ascii-')
+          dest_member = member.gsub('-ascii-','')
+          encoding = 'ISO8859-1'
+        end
+        if member.start_with?('-1047-')
+          dest_member = member.gsub('-1047-','')
+          encoding = 'IBM-1047'
+        end
         if is_pds?(relative_path)
           parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
           new_parts = []
@@ -906,17 +917,8 @@ module VIM
             new_parts << part
           end
           folder = new_parts.join('/')
-          dest = "'#{folder.gsub('/','.')}(#{member.split('.')[0]})'"
+          dest = "'#{folder.gsub('/','.')}(#{dest_member.split('.')[0]})'"
         else
-          dest_member = member
-          if member.start_with?('-ascii-')
-            dest_member = member.gsub('-ascii-','')
-            encoding = 'ISO8859-1'
-          end
-          if member.start_with?('-1047-')
-            dest_member = member.gsub('-1047-','')
-            encoding = 'IBM-1047'
-          end
           dest = "/#{relative_path}/#{dest_member}"
         end
         src = "#{src_folder}/#{member}"
@@ -926,11 +928,6 @@ module VIM
           ftp.passive = true
           ftp.login(@user, @password)
           ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
-          # if ascii
-          #   ftp.sendcmd('SITE SBD=(ISO8859-1,ISO8859-1)')
-          # else
-          #   ftp.sendcmd('SITE SBD=(IBM-1047,ISO8859-1)')
-          # end
           ftp.puttextfile(src, dest)
         end
         # puts "Uploaded to #{dest}"
