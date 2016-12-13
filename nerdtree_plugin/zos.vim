@@ -225,7 +225,6 @@ function! NERDTreeAddFolder()
       parts.each do |part|
         if part[0] == '$'
           part[0] = '_'
-          puts part
         end
         new_parts << part
       end
@@ -806,7 +805,7 @@ module VIM
       def get_member(relative_path,member)
         # puts "path #{relative_path}"
         # puts "member #{member}"
-        dest_member = member
+        dest_member = member.dup
         if dest_member[0] == '$'
           dest_member[0] = '_'
         end
@@ -825,7 +824,7 @@ module VIM
         if member[0] == '_'
           member[0] = '$'
         end
-        source_member = member
+        source_member = member.dup
         src = ''
         if is_pds?(relative_path)
           source_member = member.split('.')[0].upcase
@@ -862,7 +861,7 @@ module VIM
       def del_member(relative_path,member)
         # puts "path #{relative_path}"
         # puts "member #{member}"
-        dest_member = member
+        dest_member = member.dup
         if member.start_with?('-read only-')
           member = member.gsub('-read only-','')
         end
@@ -875,7 +874,7 @@ module VIM
         if member[0] == '_'
           member[0] = '$'
         end
-        source_member = member
+        source_member = member.dup
         src = ''
         if is_pds?(relative_path)
           source_member = member.split('.')[0].upcase
@@ -910,7 +909,7 @@ module VIM
         src_folder = "#{@path}/#{relative_path}"
         dest = ''
         encoding = 'IBM-037'
-        dest_member = member
+        dest_member = member.dup
         if member.start_with?('-ascii-')
           dest_member = member.gsub('-ascii-','')
           encoding = 'ISO8859-1'
