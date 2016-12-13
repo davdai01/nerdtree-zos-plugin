@@ -807,6 +807,9 @@ module VIM
         # puts "path #{relative_path}"
         # puts "member #{member}"
         dest_member = member
+        if dest_member[0] = '$'
+          dest_member[0] = '_'
+        end
         encoding = 'IBM-037'
         if member.start_with?('-read only-')
           member = member.gsub('-read only-','')
