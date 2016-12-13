@@ -819,6 +819,9 @@ module VIM
           member = member.gsub('-1047-','')
           encoding = 'IBM-1047'
         end
+        if member[0] = '_'
+          member[0] = '$'
+        end
         source_member = member
         src = ''
         if is_pds?(relative_path)
@@ -862,6 +865,12 @@ module VIM
         end
         if member.start_with?('-ascii-')
           member = member.gsub('-ascii-','')
+        end
+        if member.start_with?('-1047-')
+          member = member.gsub('-1047-','')
+        end
+        if member[0] = '_'
+          member[0] = '$'
         end
         source_member = member
         src = ''
@@ -907,6 +916,9 @@ module VIM
           dest_member = member.gsub('-1047-','')
           encoding = 'IBM-1047'
         end
+        if dest_member[0] = '_'
+          dest_member[0] = '$'
+        end
         if is_pds?(relative_path)
           parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
           new_parts = []
@@ -944,3 +956,4 @@ module VIM
 end
 
 EOF
+
