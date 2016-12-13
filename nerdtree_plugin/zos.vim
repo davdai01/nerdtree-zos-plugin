@@ -807,7 +807,7 @@ module VIM
         # puts "path #{relative_path}"
         # puts "member #{member}"
         dest_member = member
-        if dest_member[0] = '$'
+        if dest_member[0] == '$'
           dest_member[0] = '_'
         end
         encoding = 'IBM-037'
@@ -822,7 +822,7 @@ module VIM
           member = member.gsub('-1047-','')
           encoding = 'IBM-1047'
         end
-        if member[0] = '_'
+        if member[0] == '_'
           member[0] = '$'
         end
         source_member = member
@@ -872,7 +872,7 @@ module VIM
         if member.start_with?('-1047-')
           member = member.gsub('-1047-','')
         end
-        if member[0] = '_'
+        if member[0] == '_'
           member[0] = '$'
         end
         source_member = member
@@ -919,7 +919,7 @@ module VIM
           dest_member = member.gsub('-1047-','')
           encoding = 'IBM-1047'
         end
-        if dest_member[0] = '_'
+        if dest_member[0] == '_'
           dest_member[0] = '$'
         end
         if is_pds?(relative_path)
