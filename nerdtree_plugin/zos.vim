@@ -685,11 +685,15 @@ module VIM
       def sdsf_list()
         # puts "folder : #{folder}"
         lines = []
-        Net::FTP.open(@host) do |ftp|
-          ftp.passive = true
-          ftp.login(@user, @password)
-          ftp.sendcmd('SITE FILETYPE=JES')
-          lines = ftp.ls
+        begin
+          Net::FTP.open(@host) do |ftp|
+            ftp.passive = true
+            ftp.login(@user, @password)
+            ftp.sendcmd('SITE FILETYPE=JES')
+            lines = ftp.ls
+          end
+        rescue Exception => e
+          return e.message
         end
         sdsf_folder = "#{@path}/_spool"
         FileUtils.remove_dir(sdsf_folder, true)
@@ -728,47 +732,51 @@ module VIM
         job_id = parts[3]
         # puts job_id
         lines = []
-        Net::FTP.open(@host) do |ftp|
-          ftp.passive = true
-          ftp.login(@user, @password)
-          ftp.sendcmd('SITE FILETYPE=JES')
-          if step
-            parts = step.split('_')
-            step_id = parts[0]
-            dest_path = "#{@path}/_spool/#{job}/#{step}"
-            src = "#{job_id}.#{step_id}"
-            ftp.gettextfile(src, dest_path)
-          else
-            lines = ftp.list(job_id)
-            status = lines[1][27,6]
-            # puts "status: #{status}"
-            if status == 'OUTPUT'
-              lines.each do |line|
-                if line[0, 8] == '        '
-                  step_id = line[9, 3].strip()
-                  # puts step_id
-                  if step_id != 'ID'
-                    step_name = line[13,8].strip()
-                    # puts step_name
-                    proc_step = line[22,8].strip()
-                    # puts proc_step
-                    dd_name = line[33,8].strip()
-                    # puts dd_name
-                    mem_name = "#{step_id}_#{dd_name}_#{step_name}"
-                    dest_path = "#{@path}/_spool/#{job}/#{mem_name}.txt"
-                    src = "#{job_id}.#{step_id}"
-                    # puts src
-                    # puts dest_path
-                    # puts "Retrieving #{dd_name}-#{step_name}"
-                    FileUtils.touch(dest_path)
-                    # ftp.gettextfile(src, dest_path)
+        begin
+          Net::FTP.open(@host) do |ftp|
+            ftp.passive = true
+            ftp.login(@user, @password)
+            ftp.sendcmd('SITE FILETYPE=JES')
+            if step
+              parts = step.split('_')
+              step_id = parts[0]
+              dest_path = "#{@path}/_spool/#{job}/#{step}"
+              src = "#{job_id}.#{step_id}"
+              ftp.gettextfile(src, dest_path)
+            else
+              lines = ftp.list(job_id)
+              status = lines[1][27,6]
+              # puts "status: #{status}"
+              if status == 'OUTPUT'
+                lines.each do |line|
+                  if line[0, 8] == '        '
+                    step_id = line[9, 3].strip()
+                    # puts step_id
+                    if step_id != 'ID'
+                      step_name = line[13,8].strip()
+                      # puts step_name
+                      proc_step = line[22,8].strip()
+                      # puts proc_step
+                      dd_name = line[33,8].strip()
+                      # puts dd_name
+                      mem_name = "#{step_id}_#{dd_name}_#{step_name}"
+                      dest_path = "#{@path}/_spool/#{job}/#{mem_name}.txt"
+                      src = "#{job_id}.#{step_id}"
+                      # puts src
+                      # puts dest_path
+                      # puts "Retrieving #{dd_name}-#{step_name}"
+                      FileUtils.touch(dest_path)
+                      # ftp.gettextfile(src, dest_path)
+                    end
                   end
                 end
+              else
+                return "#{job_name} - #{job_id} is not in OUTPUT status"
               end
-            else
-              return "#{job_name} - #{job_id} is not in OUTPUT status"
             end
           end
+        rescue Exception => e
+          return e.message
         end
         return ''
         # puts "#{job_name} - #{job_id} Retrieved"
@@ -781,11 +789,15 @@ module VIM
         # puts job_name
         job_id = parts[3]
         # puts job_id
-        Net::FTP.open(@host) do |ftp|
-          ftp.passive = true
-          ftp.login(@user, @password)
-          ftp.sendcmd('SITE FILETYPE=JES')
-          lines = ftp.delete(job_id)
+        begin
+          Net::FTP.open(@host) do |ftp|
+            ftp.passive = true
+            ftp.login(@user, @password)
+            ftp.sendcmd('SITE FILETYPE=JES')
+            lines = ftp.delete(job_id)
+          end
+        rescue Exception => e
+          return e.message
         end
         job_folder = "#{@path}/_spool/#{member}"
         # puts job_folder
@@ -797,11 +809,15 @@ module VIM
         src_folder = "#{@path}/#{relative_path}"
         src = "#{src_folder}/#{member}"
 
-        Net::FTP.open(@host) do |ftp|
-          ftp.passive = true
-          ftp.login(@user, @password)
-          ftp.sendcmd('SITE FILETYPE=JES')
-          ftp.puttextfile(src)
+        begin
+          Net::FTP.open(@host) do |ftp|
+            ftp.passive = true
+            ftp.login(@user, @password)
+            ftp.sendcmd('SITE FILETYPE=JES')
+            ftp.puttextfile(src)
+          end
+        rescue Exception => e
+          return e.message
         end
         # puts "Submitted #{src}"
       end
@@ -849,14 +865,18 @@ module VIM
         FileUtils.mkdir_p(dest_folder) unless File.exist?(dest_folder)
         dest = "#{dest_folder}/#{dest_member}"
         # puts "dest: #{dest}"
-        Net::FTP.open(@host) do |ftp|
-          ftp.passive = true
-          ftp.login(@user, @password)
-          # ftp.sendcmd("SITE SBD=(IBM-1047,ISO8859-1)")
-          cmd = "SITE SBD=(#{encoding},ISO8859-1)"
-          puts cmd
-          ftp.sendcmd(cmd)
-          ftp.gettextfile(src, dest)
+        begin
+          Net::FTP.open(@host) do |ftp|
+            ftp.passive = true
+            ftp.login(@user, @password)
+            # ftp.sendcmd("SITE SBD=(IBM-1047,ISO8859-1)")
+            cmd = "SITE SBD=(#{encoding},ISO8859-1)"
+            puts cmd
+            ftp.sendcmd(cmd)
+            ftp.gettextfile(src, dest)
+          end
+        rescue Exception => e
+          return e.message
         end
         create_cksum_file(dest)
         # puts "Downladed to #{dest}"
@@ -917,11 +937,15 @@ module VIM
         else
           src = "/#{relative_path}/#{source_member}"
         end
-        # FileUtils.rm(get_cksum_file_path("#{@path}/#{relative_path}/#{member}"))
-        Net::FTP.open(@host) do |ftp|
-          ftp.passive = true
-          ftp.login(@user, @password)
-          ftp.delete(src)
+        FileUtils.rm(get_cksum_file_path("#{@path}/#{relative_path}/#{member}"))
+        begin
+          Net::FTP.open(@host) do |ftp|
+            ftp.passive = true
+            ftp.login(@user, @password)
+            ftp.delete(src)
+          end
+        rescue Exception => e
+          return e.message
         end
         return src
       end
@@ -970,11 +994,19 @@ module VIM
           # get the file first to compare the cksum
           temp_file = "#{src}.zos.temp"
           diff_file = "#{src}.zos.diff"
-          Net::FTP.open(@host) do |ftp|
-            ftp.passive = true
-            ftp.login(@user, @password)
-            ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
-            ftp.gettextfile(dest, temp_file)
+          begin
+            Net::FTP.open(@host) do |ftp|
+              ftp.passive = true
+              ftp.login(@user, @password)
+              ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
+              ftp.gettextfile(dest, temp_file)
+            end
+          rescue Exception => e
+            # puts e.message
+            # puts e.class
+            FileUtils.rm(temp_file)
+            return e.message
+            # FileUtils.touch(temp_file)
           end
           if file_match_cksum?(temp_file, File.read(cksum_file_path))
             FileUtils.rm(temp_file)
@@ -987,11 +1019,15 @@ module VIM
           end
           # FileUtils.rm(diff_file)
         end
-        Net::FTP.open(@host) do |ftp|
-          ftp.passive = true
-          ftp.login(@user, @password)
-          ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
-          ftp.puttextfile(src, dest)
+        begin
+          Net::FTP.open(@host) do |ftp|
+            ftp.passive = true
+            ftp.login(@user, @password)
+            ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
+            ftp.puttextfile(src, dest)
+          end
+        rescue Exception => e
+          return e.message
         end
         # puts "Uploaded to #{dest}"
         create_cksum_file(src)
