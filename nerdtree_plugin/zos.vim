@@ -5,6 +5,8 @@ endif
 let g:loaded_nerdtree_zos = 1
 
 call add(NERDTreeIgnore,'\.zos.connection$')
+call add(NERDTreeIgnore,'\.zos.cksum$')
+" call add(NERDTreeIgnore,'\.zos.temp$')
 
 call NERDTreeAddMenuSeparator()
 call NERDTreeAddMenuItem({'text': '(z) Add a z/OS Connection', 'shortcut': 'z', 'callback': 'NERDTreeAddConnection'})
@@ -616,6 +618,8 @@ require 'fileutils'
 require 'yaml'
 require 'find'
 require 'pathname'
+require 'digest'
+require 'open3'
 
 module VIM
   module ZOS
@@ -854,8 +858,29 @@ module VIM
           ftp.sendcmd(cmd)
           ftp.gettextfile(src, dest)
         end
+        create_cksum_file(dest)
         # puts "Downladed to #{dest}"
         return dest
+      end
+
+      def create_cksum_file(path)
+        cksum = cksum_from_file(path)
+        cksum_file_path = get_cksum_file_path(path)
+        f = File.open(cksum_file_path,'w+')
+        f.write(cksum)
+        f.close
+      end
+      
+      def get_cksum_file_path(path)
+        return "#{path}.zos.cksum"
+      end
+
+      def cksum_from_file(path)
+        return Digest::SHA2.hexdigest(File.read(path))
+      end
+
+      def file_match_cksum?(temp_path, cksum)
+        return cksum_from_file(temp_path) == cksum
       end
 
       def del_member(relative_path,member)
@@ -892,19 +917,21 @@ module VIM
         else
           src = "/#{relative_path}/#{source_member}"
         end
-        # puts "dest: #{dest}"
+        # FileUtils.rm(get_cksum_file_path("#{@path}/#{relative_path}/#{member}"))
         Net::FTP.open(@host) do |ftp|
           ftp.passive = true
           ftp.login(@user, @password)
           ftp.delete(src)
         end
-        # puts "Downladed to #{dest}"
         return src
       end
 
       def put_member(relative_path,member)
         if member.start_with?('-read only-')
           return 'read only, not uploaded'
+        end
+        if (member.end_with?('.zos.diff') || member.end_with?('.zos.temp'))
+          return 'temp file, not uploaded'
         end
         src_folder = "#{@path}/#{relative_path}"
         dest = ''
@@ -938,6 +965,28 @@ module VIM
         src = "#{src_folder}/#{member}"
         # puts "src: #{src}"
         # puts "dest: #{dest}"
+        cksum_file_path = get_cksum_file_path(src) 
+        if File.exist?(cksum_file_path)
+          # get the file first to compare the cksum
+          temp_file = "#{src}.zos.temp"
+          diff_file = "#{src}.zos.diff"
+          Net::FTP.open(@host) do |ftp|
+            ftp.passive = true
+            ftp.login(@user, @password)
+            ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
+            ftp.gettextfile(dest, temp_file)
+          end
+          if file_match_cksum?(temp_file, File.read(cksum_file_path))
+            FileUtils.rm(temp_file)
+          else
+            command = "diff -DVERSION1 '#{temp_file}' '#{src}' > '#{diff_file}'"
+            puts command
+            system(command)
+            FileUtils.rm(temp_file)
+            return "file changed, check the diff file #{diff_file}" 
+          end
+          # FileUtils.rm(diff_file)
+        end
         Net::FTP.open(@host) do |ftp|
           ftp.passive = true
           ftp.login(@user, @password)
@@ -945,6 +994,7 @@ module VIM
           ftp.puttextfile(src, dest)
         end
         # puts "Uploaded to #{dest}"
+        create_cksum_file(src)
         return ''
       end
 
