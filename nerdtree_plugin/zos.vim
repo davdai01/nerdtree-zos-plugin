@@ -411,6 +411,33 @@ function! NERDTreeListMembers()
       end
     end
     if status == "member found"
+      continue = true
+      while continue
+        prompt = "special attributes [0-none]/1-read only/2-ascii/3-1047: "
+        VIM::command("let prefix = input('#{prompt}')")
+        prefix = VIM::evaluate('prefix')
+        case prefix
+          when ''
+            break
+          when '1'
+            result = "-read only-#{result}"
+            break
+          when '2'
+            result = "-ascii-#{result}"
+            break
+          when '3'
+            result = "-1047-#{result}"
+            break
+        end
+      end
+
+      prompt = "file suffix: "
+      VIM::command("let suffix = input('#{prompt}')")
+      suffix = VIM::evaluate('suffix')
+      if suffix != ''
+        result = "#{result}.#{suffix}"
+      end
+
       new_path = conn.get_member(folder,result)
       VIM::command("let newNodeName = '#{new_path}'")
       VIM::command("call zOSNode.refresh()")
@@ -435,8 +462,8 @@ function! NERDTreeListMembers()
         VIM::command('call currentNode.open()')
       end
       VIM::command("call b:NERDTree.render()")
-      VIM::command("let newTreeNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(newNodeName))")
-      VIM::command("call newTreeNode.putCursorHere(1, 0)")
+      # VIM::command("let newTreeNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(newNodeName))")
+      # VIM::command("call newTreeNode.putCursorHere(1, 0)")
       # puts dest
       VIM::command("call s:echo('Folder added')")
     end
