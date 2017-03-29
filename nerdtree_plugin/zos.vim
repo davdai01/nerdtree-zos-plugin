@@ -5,7 +5,8 @@ endif
 let g:loaded_nerdtree_zos = 1
 
 call add(NERDTreeIgnore,'\.zos.connection$')
-call add(NERDTreeIgnore,'\.zos.cksum$')
+" call add(NERDTreeIgnore,'\.zos.cksum$')
+call add(NERDTreeIgnore,'\.zos.backup$')
 " call add(NERDTreeIgnore,'\.zos.temp$')
 
 call NERDTreeAddMenuSeparator()
@@ -544,6 +545,8 @@ function! s:ZOSFileUpdate(fname)
         VIM::command("call s:echo('Member uploaded')")
       else
         VIM::command("call s:echoWarning('#{msg}')")
+        VIM::command("call zOSNode.refresh()")
+        VIM::command("call b:NERDTree.render()")
       end
 EOF
     endif
@@ -905,31 +908,37 @@ module VIM
         rescue Exception => e
           return e.message
         end
-        create_cksum_file(dest)
+        backup = "#{dest}.zos.backup"
+        # FileUtils.rm(backup) if FileUtils.exist?(backup)        
+        FileUtils.cp(dest, backup)
+        # create_cksum_file(dest)
         # puts "Downladed to #{dest}"
         return dest
       end
 
-      def create_cksum_file(path)
-        cksum = cksum_from_file(path)
-        cksum_file_path = get_cksum_file_path(path)
-        f = File.open(cksum_file_path,'w+')
-        f.write(cksum)
-        f.close
-      end
-      
-      def get_cksum_file_path(path)
-        return "#{path}.zos.cksum"
-      end
-
-      def cksum_from_file(path)
-        return Digest::SHA2.hexdigest(File.read(path))
-      end
-
-      def file_match_cksum?(temp_path, cksum)
-        return cksum_from_file(temp_path) == cksum
-      end
-
+      " def create_cksum_file(path)
+      "   cksum = cksum_from_file(path)
+      "   cksum_file_path = get_cksum_file_path(path)
+      "   f = File.open(cksum_file_path,'w+')
+      "   f.write(cksum)
+      "   f.close
+      " end
+      "
+      " def get_cksum_file_path(path)
+      "   return "#{path}.zos.cksum"
+      " end
+      "
+      " def cksum_from_file(path)
+      "   return Digest::SHA2.hexdigest(File.read(path))
+      " end
+      "
+      " def file_match_cksum?(temp_path, cksum)
+      "   cksum1 = cksum_from_file(temp_path)
+      "   puts "cksum1: #{cksum1}"
+      "   puts "cksum: #{cksum}"
+      "   return cksum1 == cksum
+      " end
+      "
       def del_member(relative_path,member)
         # puts "path #{relative_path}"
         # puts "member #{member}"
@@ -964,7 +973,7 @@ module VIM
         else
           src = "/#{relative_path}/#{source_member}"
         end
-        FileUtils.rm(get_cksum_file_path("#{@path}/#{relative_path}/#{member}"))
+        FileUtils.rm("#{@path}/#{relative_path}/#{member}.zos.backup")
         begin
           Net::FTP.open(@host) do |ftp|
             ftp.passive = true
@@ -1016,9 +1025,10 @@ module VIM
         src = "#{src_folder}/#{member}"
         # puts "src: #{src}"
         # puts "dest: #{dest}"
-        cksum_file_path = get_cksum_file_path(src) 
-        if File.exist?(cksum_file_path)
-          # get the file first to compare the cksum
+        backup_file = "#{src}.zos.backup"
+        " cksum_file_path = get_cksum_file_path(src) 
+        if File.exist?(backup_file)
+          # get the file first to compare with the backup
           temp_file = "#{src}.zos.temp"
           diff_file = "#{src}.zos.diff"
           begin
@@ -1035,15 +1045,26 @@ module VIM
             return e.message
             # FileUtils.touch(temp_file)
           end
-          if file_match_cksum?(temp_file, File.read(cksum_file_path))
+          if FileUtils.identical?(temp_file, backup_file)
             FileUtils.rm(temp_file)
           else
-            command = "diff -DVERSION1 '#{temp_file}' '#{src}' > '#{diff_file}'"
+            command = "diff -DVERSION1 '#{temp_file}' '#{backup_file}' > '#{diff_file}'"
             puts command
             system(command)
             FileUtils.rm(temp_file)
             return "file changed, check the diff file #{diff_file}" 
           end
+
+          # if file_match_cksum?(temp_file, File.read(cksum_file_path))
+          #   FileUtils.rm(temp_file)
+          # else
+          #   command = "diff -DVERSION1 '#{temp_file}' '#{src}' > '#{diff_file}'"
+          #   puts command
+          #   system(command)
+          #   FileUtils.rm(temp_file)
+          #   return "file changed, check the diff file #{diff_file}" 
+          # end
+
           # FileUtils.rm(diff_file)
         end
         begin
@@ -1057,7 +1078,9 @@ module VIM
           return e.message
         end
         # puts "Uploaded to #{dest}"
-        create_cksum_file(src)
+        # FileUtils.rm(backup_file) if FileUtils.exist?(backup_file)        
+        FileUtils.cp(src, backup_file)
+        # create_cksum_file(src)
         return ''
       end
 
