@@ -288,7 +288,7 @@ function! NERDTreePutMember()
     VIM::command("call currentNode.open({'where': 'p'})")
     VIM::command('redraw')
 EOF
-    call s:echo('Member refreshed')
+    call s:echo('Member uploaded')
   endif
 endfunction
 
