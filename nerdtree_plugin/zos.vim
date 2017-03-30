@@ -916,29 +916,6 @@ module VIM
         return dest
       end
 
-      " def create_cksum_file(path)
-      "   cksum = cksum_from_file(path)
-      "   cksum_file_path = get_cksum_file_path(path)
-      "   f = File.open(cksum_file_path,'w+')
-      "   f.write(cksum)
-      "   f.close
-      " end
-      "
-      " def get_cksum_file_path(path)
-      "   return "#{path}.zos.cksum"
-      " end
-      "
-      " def cksum_from_file(path)
-      "   return Digest::SHA2.hexdigest(File.read(path))
-      " end
-      "
-      " def file_match_cksum?(temp_path, cksum)
-      "   cksum1 = cksum_from_file(temp_path)
-      "   puts "cksum1: #{cksum1}"
-      "   puts "cksum: #{cksum}"
-      "   return cksum1 == cksum
-      " end
-      "
       def del_member(relative_path,member)
         # puts "path #{relative_path}"
         # puts "member #{member}"
@@ -1026,7 +1003,6 @@ module VIM
         # puts "src: #{src}"
         # puts "dest: #{dest}"
         backup_file = "#{src}.zos.backup"
-        " cksum_file_path = get_cksum_file_path(src) 
         if File.exist?(backup_file)
           # get the file first to compare with the backup
           temp_file = "#{src}.zos.temp"
@@ -1054,18 +1030,6 @@ module VIM
             FileUtils.rm(temp_file)
             return "file changed, check the diff file #{diff_file}" 
           end
-
-          # if file_match_cksum?(temp_file, File.read(cksum_file_path))
-          #   FileUtils.rm(temp_file)
-          # else
-          #   command = "diff -DVERSION1 '#{temp_file}' '#{src}' > '#{diff_file}'"
-          #   puts command
-          #   system(command)
-          #   FileUtils.rm(temp_file)
-          #   return "file changed, check the diff file #{diff_file}" 
-          # end
-
-          # FileUtils.rm(diff_file)
         end
         begin
           Net::FTP.open(@host) do |ftp|
