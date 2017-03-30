@@ -14,6 +14,7 @@ call NERDTreeAddMenuItem({'text': '(z) Add a z/OS Connection', 'shortcut': 'z', 
 call NERDTreeAddMenuItem({'text': '(f) Add a PDS/folder', 'shortcut': 'f', 'isActiveCallback': 'NERDTreezOSEnabled2', 'callback': 'NERDTreeAddFolder'})
 call NERDTreeAddMenuItem({'text': '(l) List members', 'shortcut': 'l', 'isActiveCallback': 'NERDTreezOSEnabled2',  'callback': 'NERDTreeListMembers'})
 call NERDTreeAddMenuItem({'text': '(r) Refresh(re-download) the member', 'shortcut': 'r', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreeGetMember'})
+call NERDTreeAddMenuItem({'text': '(u) Force update the z/OS copy with the local copy', 'shortcut': 'u', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreePutMember'})
 call NERDTreeAddMenuItem({'text': '(s) Retrieve SDSF spool', 'shortcut': 's', 'isActiveCallback': 'NERDTreezOSEnabled',  'callback': 'NERDTreeSDSFList'})
 call NERDTreeAddMenuItem({'text': '(i) Retrieve job output', 'shortcut': 'i', 'isActiveCallback': 'NERDTreeSDSFEnabled',  'callback': 'NERDTreeSDSFGet'})
 call NERDTreeAddMenuItem({'text': '(p) Delete job output', 'shortcut': 'p', 'isActiveCallback': 'NERDTreeSDSFEnabled',  'callback': 'NERDTreeSDSFDel'})
@@ -261,6 +262,29 @@ function! NERDTreeGetMember()
     member = parts.pop
     folder = parts.join('/')
     conn.get_member(folder,member)
+    VIM::command("call currentNode.open({'where': 'p'})")
+    VIM::command('redraw')
+EOF
+    call s:echo('Member refreshed')
+  endif
+endfunction
+
+function! NERDTreePutMember()
+  let currentNode = g:NERDTreeFileNode.GetSelected()
+  let zOSNode = s:InZOSFolder2(currentNode)
+  if !empty(zOSNode)
+    " echo 'found'
+    " echo zOSNode.path.str()
+    ruby << EOF
+    zos_path = VIM::evaluate('zOSNode.path.str()')
+    curr_path = VIM::evaluate('currentNode.path.str()')
+    conn = VIM::ZOS::Connection.new
+    conn.load_from_path(zos_path)
+    relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
+    parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
+    member = parts.pop
+    folder = parts.join('/')
+    conn.put_member(folder,member, true)
     VIM::command("call currentNode.open({'where': 'p'})")
     VIM::command('redraw')
 EOF
@@ -963,7 +987,7 @@ module VIM
         return src
       end
 
-      def put_member(relative_path,member)
+      def put_member(relative_path,member, force=false)
         if member.start_with?('-read only-')
           return 'read only, not uploaded'
         end
@@ -1003,7 +1027,7 @@ module VIM
         # puts "src: #{src}"
         # puts "dest: #{dest}"
         backup_file = "#{src}.zos.backup"
-        if File.exist?(backup_file)
+        if File.exist?(backup_file) && !force
           # get the file first to compare with the backup
           temp_file = "#{src}.zos.temp"
           diff_file = "#{src}.zos.diff"
