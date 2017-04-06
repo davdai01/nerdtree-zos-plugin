@@ -919,7 +919,7 @@ module VIM
         FileUtils.mkdir_p(dest_folder) unless File.exist?(dest_folder)
         dest = "#{dest_folder}/#{dest_member}"
         # puts "dest: #{dest}"
-        begin
+        # begin
           Net::FTP.open(@host) do |ftp|
             ftp.passive = true
             ftp.login(@user, @password)
@@ -929,9 +929,9 @@ module VIM
             ftp.sendcmd(cmd)
             ftp.gettextfile(src, dest)
           end
-        rescue Exception => e
-          return e.message
-        end
+        # rescue Exception => e
+        #   return e.message
+        # end
         backup = "#{dest}.zos.backup"
         # FileUtils.rm(backup) if FileUtils.exist?(backup)        
         FileUtils.cp(dest, backup)
