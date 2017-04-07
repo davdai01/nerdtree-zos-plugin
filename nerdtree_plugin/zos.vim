@@ -262,6 +262,8 @@ function! NERDTreeGetMember()
     member = parts.pop
     folder = parts.join('/')
     conn.get_member(folder,member)
+    VIM::command("call zOSNode.refresh()")
+    VIM::command("call b:NERDTree.render()")
     VIM::command("call currentNode.open({'where': 'p'})")
     VIM::command('redraw')
 EOF
@@ -285,6 +287,8 @@ function! NERDTreePutMember()
     member = parts.pop
     folder = parts.join('/')
     conn.put_member(folder,member, true)
+    VIM::command("call zOSNode.refresh()")
+    VIM::command("call b:NERDTree.render()")
     VIM::command("call currentNode.open({'where': 'p'})")
     VIM::command('redraw')
 EOF
@@ -565,6 +569,7 @@ function! s:ZOSFileUpdate(fname)
       member = parts.pop
       folder = parts.join('/')
       msg = conn.put_member(folder,member)
+      # puts "msg: #{msg}."
       if msg == ''
         VIM::command("call s:echo('Member uploaded')")
       else
@@ -925,7 +930,7 @@ module VIM
             ftp.login(@user, @password)
             # ftp.sendcmd("SITE SBD=(IBM-1047,ISO8859-1)")
             cmd = "SITE SBD=(#{encoding},ISO8859-1)"
-            puts cmd
+            # puts cmd
             ftp.sendcmd(cmd)
             ftp.gettextfile(src, dest)
           end
@@ -933,8 +938,10 @@ module VIM
         #   return e.message
         # end
         backup = "#{dest}.zos.backup"
+        diff = "#{dest}.zos.diff"
         # FileUtils.rm(backup) if FileUtils.exist?(backup)        
         FileUtils.cp(dest, backup)
+        FileUtils.rm(diff) if File.exist?(diff)
         # create_cksum_file(dest)
         # puts "Downladed to #{dest}"
         return dest
@@ -974,7 +981,8 @@ module VIM
         else
           src = "/#{relative_path}/#{source_member}"
         end
-        FileUtils.rm("#{@path}/#{relative_path}/#{member}.zos.backup")
+        backup_file = "#{@path}/#{relative_path}/#{member}.zos.backup"
+        FileUtils.rm(backup_file) if File.exist?(backup_file)
         begin
           Net::FTP.open(@host) do |ftp|
             ftp.passive = true
@@ -1027,10 +1035,10 @@ module VIM
         # puts "src: #{src}"
         # puts "dest: #{dest}"
         backup_file = "#{src}.zos.backup"
+        temp_file = "#{src}.zos.temp"
+        diff_file = "#{src}.zos.diff"
         if File.exist?(backup_file) && !force
           # get the file first to compare with the backup
-          temp_file = "#{src}.zos.temp"
-          diff_file = "#{src}.zos.diff"
           begin
             Net::FTP.open(@host) do |ftp|
               ftp.passive = true
@@ -1041,17 +1049,17 @@ module VIM
           rescue Exception => e
             # puts e.message
             # puts e.class
-            FileUtils.rm(temp_file)
+            FileUtils.rm(temp_file) if File.exist?(temp_file)
             return e.message
             # FileUtils.touch(temp_file)
           end
           if FileUtils.identical?(temp_file, backup_file)
-            FileUtils.rm(temp_file)
+            FileUtils.rm(temp_file) if File.exist?(temp_file)
           else
             command = "diff -DVERSION1 '#{temp_file}' '#{backup_file}' > '#{diff_file}'"
-            puts command
+            # puts command
             system(command)
-            FileUtils.rm(temp_file)
+            FileUtils.rm(temp_file) if File.exist?(temp_file)
             return "file changed, check the diff file #{diff_file}" 
           end
         end
@@ -1061,13 +1069,26 @@ module VIM
             ftp.login(@user, @password)
             ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
             ftp.puttextfile(src, dest)
+            # puts 'upload: ' + src
           end
         rescue Exception => e
           return e.message
         end
         # puts "Uploaded to #{dest}"
         # FileUtils.rm(backup_file) if FileUtils.exist?(backup_file)        
-        FileUtils.cp(src, backup_file)
+        begin
+          Net::FTP.open(@host) do |ftp|
+            ftp.passive = true
+            ftp.login(@user, @password)
+            ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
+            ftp.gettextfile(dest, backup_file)
+            # puts "got: #{backup_file}"
+          end
+        rescue Exception => e
+          return e.message
+        end
+        FileUtils.rm(diff_file) if File.exist?(diff_file)
+        # FileUtils.cp(src, backup_file)
         # create_cksum_file(src)
         return ''
       end
