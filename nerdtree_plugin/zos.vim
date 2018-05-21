@@ -743,9 +743,6 @@ module VIM
         if ENV['MY_SECRET_KEY']
           secret = ENV['MY_SECRET_KEY']
         end
-        # temp
-        puts "secret: #{secret}"
-
         key = Digest::SHA1.hexdigest(secret)
 
         decipher.key = key
