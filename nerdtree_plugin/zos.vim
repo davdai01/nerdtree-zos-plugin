@@ -111,7 +111,7 @@ function! NERDTreeAddConnection()
   ruby << EOF
   VIM::ZOS::Connection.add_connection("./#{VIM::evaluate("name")}",VIM::evaluate("host"),VIM::evaluate("user"),VIM::evaluate("password"))
 EOF
-  call zOSNode.refresh()
+  " call zOSNode.refresh()
   call b:NERDTree.render()
   call s:echo('Connection added')
   " redraw
@@ -677,8 +677,9 @@ require 'fileutils'
 require 'yaml'
 require 'find'
 require 'pathname'
-require 'digest'
+require 'digest/sha1'
 require 'open3'
+require 'openssl'
 
 module VIM
   module ZOS
@@ -700,7 +701,26 @@ module VIM
         hash = {}
         hash['host'] = host.force_encoding "UTF-8"
         hash['user'] = user.force_encoding "UTF-8"
-        hash['password'] = password.force_encoding "UTF-8"
+        # hash['password'] = password.force_encoding "UTF-8"
+        # Encrypt the password
+        cipher = OpenSSL::Cipher::Cipher.new("aes-256-cbc")
+        cipher.encrypt
+
+        secret = 'my little secret'
+        if ENV['MY_SECRET_KEY']
+          secret = ENV['MY_SECRET_KEY']
+        end
+
+        key = Digest::SHA1.hexdigest(secret)
+        iv = cipher.random_iv
+
+        cipher.key = key
+        cipher.iv = iv
+        encrypted = cipher.update(password)
+        encrypted << cipher.final
+        hash['password'] = encrypted
+        hash['cipher_iv'] = iv
+
         data = hash.to_yaml
         f = File.open(file_name,'w+')
         f.write(data)
@@ -714,6 +734,28 @@ module VIM
         @host = hash['host']
         @user = hash['user']
         @password = hash['password']
+
+        # decrypt the password
+        decipher = OpenSSL::Cipher::Cipher.new("aes-256-cbc")
+        decipher.decrypt
+
+        secret = 'my little secret'
+        if ENV['MY_SECRET_KEY']
+          secret = ENV['MY_SECRET_KEY']
+        end
+        # temp
+        puts "secret: #{secret}"
+
+        key = Digest::SHA1.hexdigest(secret)
+
+        decipher.key = key
+        decipher.iv = hash['cipher_iv']
+
+        decrypted = decipher.update(@password)
+        decrypted << decipher.final
+
+        @password = decrypted
+
         # puts "loaded from #{file_name}"
       end
 
