@@ -703,7 +703,7 @@ module VIM
         hash['user'] = user.force_encoding "UTF-8"
         # hash['password'] = password.force_encoding "UTF-8"
         # Encrypt the password
-        cipher = OpenSSL::Cipher::Cipher.new("aes-256-cbc")
+        cipher = OpenSSL::Cipher.new("aes-256-cbc")
         cipher.encrypt
 
         secret = 'my little secret'
@@ -711,7 +711,7 @@ module VIM
           secret = ENV['MY_SECRET_KEY']
         end
 
-        key = Digest::SHA1.hexdigest(secret)
+        key = Digest::MD5.hexdigest(secret)
         iv = cipher.random_iv
 
         cipher.key = key
@@ -736,14 +736,14 @@ module VIM
         @password = hash['password']
 
         # decrypt the password
-        decipher = OpenSSL::Cipher::Cipher.new("aes-256-cbc")
+        decipher = OpenSSL::Cipher.new("aes-256-cbc")
         decipher.decrypt
 
         secret = 'my little secret'
         if ENV['MY_SECRET_KEY']
           secret = ENV['MY_SECRET_KEY']
         end
-        key = Digest::SHA1.hexdigest(secret)
+        key = Digest::MD5.hexdigest(secret)
 
         decipher.key = key
         decipher.iv = hash['cipher_iv']
