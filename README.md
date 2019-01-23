@@ -5,8 +5,8 @@ A plugin of NERDTree for editing files from IBM mainframe z/OS system. Works wit
 of [NERDTree](https://github.com/scrooloose/nerdtree).
 
 ## Requirements
-* Vim 7.0+ with +ruby or +ruby/dyn
-* Ruby 1.9+
+* Vim 7.0+ with +python3 or +python3/dyn
+* python 3.5+
 * z/OS FTP server
 
 ## Installation
@@ -42,4 +42,3 @@ The following functions are added to NERDTree menu:
 * if you are editing JCL file, you can submit this directly to mainframe from
   Vim using command :JCLSubmit
 * You can also view or delete the job output
-

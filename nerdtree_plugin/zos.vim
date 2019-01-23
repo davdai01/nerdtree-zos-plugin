@@ -1,13 +1,62 @@
-" rubyfile ./zos_explorer.rb
+if !has("python3")
+    echo "vim has to be compiled with +python3 to run this"
+    finish
+endif
+
 if exists('g:loaded_nerdtree_zos')
   finish
 endif
 let g:loaded_nerdtree_zos = 1
 
+let s:plugin_root_dir = fnamemodify(resolve(expand('<sfile>:p')), ':h')
+
+python3 << EOF
+import sys
+from os.path import normpath, join
+import vim
+import os
+import yaml
+import io
+from pathlib import Path
+plugin_root_dir = vim.eval('s:plugin_root_dir')
+python_root_dir = normpath(join(plugin_root_dir, '..', 'python'))
+sys.path.insert(0, python_root_dir)
+
+from zos import Connection, AESCipher
+
+def get_connection(path):
+    file_name = join(path, ".zos.connection")
+    with io.open(file_name, 'r') as stream:
+        try:
+            data = yaml.load(stream)
+        except yaml.YAMLError as exc:
+            print(exc)
+            return
+    host = data['host']
+    user  = data['user']
+    cipher = AESCipher()
+    password = cipher.decrypt(data['password'])
+    conn = Connection(path, host, user, password)
+    return conn
+
+def add_connection(path, host, user, password):
+    if Path(path).exists():
+       raise Exception('Connection folder already exists')
+    Path(join(path, '_spool')).mkdir(parents=True, exist_ok=True)
+    file_name = join(path, '.zos.connection')
+    cipher = AESCipher()
+    encrypted = cipher.encrypt(password)
+    data = {}
+    data['host'] = host
+    data['user'] = user
+    data['password'] = encrypted
+    with io.open(file_name, 'w') as f:
+        yaml.dump(data, f, default_flow_style=False)
+
+EOF
+
 call add(NERDTreeIgnore,'\.zos.connection$')
-" call add(NERDTreeIgnore,'\.zos.cksum$')
 call add(NERDTreeIgnore,'\.zos.backup$')
-" call add(NERDTreeIgnore,'\.zos.temp$')
 
 call NERDTreeAddMenuSeparator()
 call NERDTreeAddMenuItem({'text': '(z) Add a z/OS Connection', 'shortcut': 'z', 'callback': 'NERDTreeAddConnection'})
@@ -52,11 +101,10 @@ function! NERDTreezOSMember()
   let zOSNode = s:InZOSFolder2(currentNode)
   let result = 0
   if !empty(zOSNode)
-    ruby << EOF
-    curr_path = VIM::evaluate('currentNode.path.str()')
-    if !Pathname(curr_path).directory?
-      VIM::command('let result = 1')
-    end
+python3 << EOF
+curr_path = vim.eval('currentNode.path.str()')
+if (Path(curr_path).is_dir() is not True):
+    vim.command('let result = 1')
 EOF
   endif
   return result
@@ -81,26 +129,28 @@ endfunction
 com! JCLSubmit call SubJCL(expand("%:p"))
 function! SubJCL(fname)
   call g:NERDTree.CursorToTreeWin()
-  " try
-    let node = b:NERDTreeRoot.findNode(g:NERDTreePath.New(a:fname))
-    let zOSNode = s:InZOSFolder2(node)
-    if !empty(zOSNode)
-      ruby << EOF
-      zos_path = VIM::evaluate('zOSNode.path.str()')
-      curr_path = VIM::evaluate('node.path.str()')
-      conn = VIM::ZOS::Connection.new
-      conn.load_from_path(zos_path)
-      relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
-      parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
-      member = parts.pop
-      folder = parts.join('/')
-      conn.submit_jcl(folder,member)
+  let node = b:NERDTreeRoot.findNode(g:NERDTreePath.New(a:fname))
+  let zOSNode = s:InZOSFolder2(node)
+  let rc = 0
+  if !empty(zOSNode)
+python3 << EOF
+try:
+    zos_path = vim.eval('zOSNode.path.str()')
+    curr_path = vim.eval('node.path.str()')
+    conn = get_connection(zos_path)
+    relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
+    parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
+    member = parts.pop()
+    folder = '/'.join(parts)
+    conn.submit_jcl(folder,member)
+except Exception as e:
+    vim.command('let rc = 1')
+    raise e
 EOF
-    call s:echo('Job submitted')
+    if rc == 0
+      call s:echo('Job submitted')
     endif
-  " catch
-  "   echo 'submit error'
-  " endtry
+  endif
 endfunction
 
 function! NERDTreeAddConnection()
@@ -108,38 +158,44 @@ function! NERDTreeAddConnection()
   let host = input('Input the host address: ')
   let user = input('Input the user id: ')
   let password = input('Input the password: ')
-  ruby << EOF
-  VIM::ZOS::Connection.add_connection("./#{VIM::evaluate("name")}",VIM::evaluate("host"),VIM::evaluate("user"),VIM::evaluate("password"))
+  let rc = 0
+python3 << EOF
+try:
+    add_connection('./' + vim.eval('name'), vim.eval('host'), vim.eval('user'), vim.eval('password'))
+except Exception as e:
+    vim.command('let rc = 1')
+    raise e
 EOF
-  " call zOSNode.refresh()
-  call b:NERDTree.render()
-  call s:echo('Connection added')
-  " redraw
+  if rc == 0
+    call b:NERDTree.render()
+    call s:echo('Connection added')
+  endif
 endfunction
 
 function! NERDTreeSDSFList()
   let currentNode = g:NERDTreeFileNode.GetSelected()
   let zOSNode = s:InZOSFolder(currentNode)
   if !empty(zOSNode)
-    ruby << EOF
-    zos_path = VIM::evaluate('zOSNode.path.str()')
-    curr_path = VIM::evaluate('currentNode.path.str()')
-    conn = VIM::ZOS::Connection.new
-    conn.load_from_path(zos_path)
+    let rc = 0
+python3 << EOF
+try:
+    zos_path = vim.eval('zOSNode.path.str()')
+    curr_path = vim.eval('currentNode.path.str()')
+    conn = get_connection(zos_path)
     new_path = conn.sdsf_list()
-    VIM::command("let newNodeName = '#{new_path}'")
+    vim.command("let newNodeName = '%s'" % new_path)
+except Exception as e:
+    vim.command('let rc = 1')
+    raise e
 EOF
-    call zOSNode.refresh()
-    let newTreeNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(newNodeName))
-    call newTreeNode.open()
-    call newTreeNode.putCursorHere(1, 0)
-    call b:NERDTree.render()
-    call s:echo('SDSF list refreshed')
-    " redraw
-" EOF
-"     call zOSNode.refresh()
-"     call b:NERDTree.render()
-"     redraw
+    if rc == 0
+      call zOSNode.refresh()
+      let newTreeNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(newNodeName))
+      call newTreeNode.open()
+      call newTreeNode.putCursorHere(1, 0)
+      call b:NERDTree.render()
+      call s:echo('SDSF list refreshed')
+    endif
   endif
 endfunction
 
@@ -147,37 +203,28 @@ function! NERDTreeSDSFGet()
   let currentNode = g:NERDTreeFileNode.GetSelected()
   let zOSNode = s:InZOSFolder(currentNode)
   if !empty(zOSNode)
-    " echo 'found'
-    " echo zOSNode.path.str()
-    ruby << EOF
-    zos_path = VIM::evaluate('zOSNode.path.str()')
-    curr_path = VIM::evaluate('currentNode.path.str()')
-    conn = VIM::ZOS::Connection.new
-    conn.load_from_path(zos_path)
-    relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
-    parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
-    step = nil
-    if !Pathname(curr_path).directory?
-      step = parts.pop
-      # VIM::evaluate('let currentNode = currentNode.parent')
-    end
-    job = parts.pop
-    msg = conn.sdsf_get(job, step)
-    if msg == ''
-      # VIM::command("call s:echo('Member uploaded')")
-      if !Pathname(curr_path).directory?
-        VIM::command("call currentNode.open({'where': 'p'})")
-        VIM::command("call s:echo('Output retreived')")
-      else
-        VIM::command('call currentNode.refresh()')
-        VIM::command('call currentNode.open()')
-        VIM::command('call b:NERDTree.render()')
-        VIM::command("call s:echo('Job output list retreived')")
-        # VIM::command('redraw')
-      end
-    else
-      VIM::command("call s:echoWarning('#{msg}')")
-    end
+    python3 << EOF
+zos_path = vim.eval('zOSNode.path.str()')
+curr_path = vim.eval('currentNode.path.str()')
+conn = get_connection(zos_path)
+relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
+parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
+step = None
+if (Path(curr_path).is_dir() is not True):
+    step = parts.pop()
+job = parts.pop()
+msg = conn.sdsf_get(job, step)
+if (msg == ''):
+    if (Path(curr_path).is_dir() is not True):
+        vim.command("call currentNode.open({'where': 'p'})")
+        vim.command("call s:echo('Output retreived')")
+    else:
+        vim.command('call currentNode.refresh()')
+        vim.command('call currentNode.open()')
+        vim.command('call b:NERDTree.render()')
+        vim.command("call s:echo('Job output list retreived')")
+else:
+    vim.command("call s:echoWarning('" + msg + "')")
 EOF
   endif
 endfunction
@@ -186,31 +233,30 @@ function! NERDTreeSDSFDel()
   let currentNode = g:NERDTreeFileNode.GetSelected()
   let zOSNode = s:InZOSFolder(currentNode)
   if !empty(zOSNode)
-    " echo 'found'
-    " echo zOSNode.path.str()
-    ruby << EOF
-    zos_path = VIM::evaluate('zOSNode.path.str()')
-    curr_path = VIM::evaluate('currentNode.path.str()')
-    conn = VIM::ZOS::Connection.new
-    conn.load_from_path(zos_path)
-    relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
-    parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
-    if !Pathname(curr_path).directory?
-      parts.pop
-    end
-    member = parts.pop
-    conn.sdsf_del(member)
-    sdsf_folder = "#{conn.path}/_spool"
-    VIM::command("let newNodeName = '#{sdsf_folder}'")
+    let rc = 0
+python3 << EOF
+try:
+    zos_path = vim.eval('zOSNode.path.str()')
+    curr_path = vim.eval('currentNode.path.str()')
+    conn = get_connection(zos_path)
+    relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
+    parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
+    if (Path(curr_path).is_dir() is not True):
+        parts.pop()
+    job = parts.pop()
+    conn.sdsf_del(job)
+    vim.command("let newNodeName = '" + conn.path + "/_spool'")
+except Exception as e:
+    vim.command('let rc = 1')
+    raise e
 EOF
-    call zOSNode.refresh()
-    let newTreeNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(newNodeName))
-    call newTreeNode.putCursorHere(1, 0)
-    call NERDTreeRender()
-" EOF
-"     call zOSNode.refresh()
-"     call NERDTreeRender()
-    call s:echo('Job deleted')
+    if rc == 0
+      call zOSNode.refresh()
+      let newTreeNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(newNodeName))
+      call newTreeNode.putCursorHere(1, 0)
+      call NERDTreeRender()
+      call s:echo('Job deleted')
+    endif
   endif
 endfunction
 
@@ -219,30 +265,33 @@ function! NERDTreeAddFolder()
   let currentNode = g:NERDTreeFileNode.GetSelected()
   let zOSNode = s:InZOSFolder2(currentNode)
   if !empty(zOSNode)
-    ruby << EOF
-    name = VIM::evaluate('name')
-    zos_folder = VIM::evaluate('zOSNode.path.str()')
-    if !name.include?('/')
-      name.gsub!('.','/').upcase!
-      parts = name.split('/')
-      new_parts = []
-      parts.each do |part|
-        if part[0] == '$'
-          part[0] = '_'
-        end
-        new_parts << part
-      end
-      name = parts.join('/')
-    end
+    let rc = 0
+python3 << EOF
+try:
+    name = vim.eval('name')
+    zos_folder = vim.eval('zOSNode.path.str()')
+    member = name
+    if (name.find('/') == -1):
+        new_name = name.replace('.', '/').upper()
+        parts = new_name.split('/')
+        new_parts = []
+        for part in parts:
+            if (part[0] == '$'):
+                part[0] = '_'
+            new_parts.append(part)
+        member = '/'.join(parts)
 
-    dest = "#{zos_folder}/#{name}"
-    FileUtils.mkdir_p dest
-    # puts "created #{dest}"
+    dest = join(zos_folder, member)
+    Path(dest).mkdir(parents=True, exist_OK=True)
+except Exception as e:
+    vim.command('let rc = 1')
+    raise e
 EOF
-    call zOSNode.refresh()
-    call b:NERDTree.render()
-    call s:echo('Folder added')
-    " redraw
+    if rc == 0
+      call zOSNode.refresh()
+      call b:NERDTree.render()
+      call s:echo('Folder added')
+    endif
   endif
 endfunction
 
@@ -250,24 +299,28 @@ function! NERDTreeGetMember()
   let currentNode = g:NERDTreeFileNode.GetSelected()
   let zOSNode = s:InZOSFolder2(currentNode)
   if !empty(zOSNode)
-    " echo 'found'
-    " echo zOSNode.path.str()
-    ruby << EOF
-    zos_path = VIM::evaluate('zOSNode.path.str()')
-    curr_path = VIM::evaluate('currentNode.path.str()')
-    conn = VIM::ZOS::Connection.new
-    conn.load_from_path(zos_path)
-    relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
-    parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
-    member = parts.pop
-    folder = parts.join('/')
-    conn.get_member(folder,member)
-    VIM::command("call zOSNode.refresh()")
-    VIM::command("call b:NERDTree.render()")
-    VIM::command("call currentNode.open({'where': 'p'})")
-    VIM::command('redraw')
+    let rc = 0
+python3 << EOF
+try:
+    zos_path = vim.eval('zOSNode.path.str()')
+    curr_path = vim.eval('currentNode.path.str()')
+    conn = get_connection(zos_path)
+    relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
+    parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
+    member = parts.pop()
+    folder = '/'.join(parts)
+    conn.get_member(folder, member)
+except Exception as e:
+    vim.command('let rc = 1')
+    raise e
 EOF
-    call s:echo('Member refreshed')
+    if rc == 0
+      call zOSNode.refresh()")
+      call b:NERDTree.render()")
+      call currentNode.open({'where': 'p'})")
+      redraw
+      call s:echo('Member refreshed')
+    endif
   endif
 endfunction
 
@@ -277,22 +330,28 @@ function! NERDTreePutMember()
   if !empty(zOSNode)
     " echo 'found'
     " echo zOSNode.path.str()
-    ruby << EOF
-    zos_path = VIM::evaluate('zOSNode.path.str()')
-    curr_path = VIM::evaluate('currentNode.path.str()')
-    conn = VIM::ZOS::Connection.new
-    conn.load_from_path(zos_path)
-    relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
-    parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
-    member = parts.pop
-    folder = parts.join('/')
-    conn.put_member(folder,member, true)
-    VIM::command("call zOSNode.refresh()")
-    VIM::command("call b:NERDTree.render()")
-    VIM::command("call currentNode.open({'where': 'p'})")
-    VIM::command('redraw')
+    let rc = 0
+python3 << EOF
+try:
+    zos_path = vim.eval('zOSNode.path.str()')
+    curr_path = vim.eval('currentNode.path.str()')
+    conn = get_connection(zos_path)
+    relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
+    parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
+    member = parts.pop()
+    folder = '/'.join(parts)
+    conn.put_member(folder,member, True)
+except Exception as e:
+    vim.command('let rc = 1')
+    raise e
 EOF
-    call s:echo('Member uploaded')
+    if rc == 0
+      call zOSNode.refresh()
+      call b:NERDTree.render()
+      call currentNode.open({'where': 'p'})
+      redraw
+      call s:echo('Member uploaded')
+    endif
   endif
 endfunction
 
@@ -310,31 +369,35 @@ function! NERDTreeDelMember()
     if !empty(zOSNode)
       " echo 'found'
       " echo zOSNode.path.str()
-      ruby << EOF
-      zos_path = VIM::evaluate('zOSNode.path.str()')
-      curr_path = VIM::evaluate('currentNode.path.str()')
-      conn = VIM::ZOS::Connection.new
-      conn.load_from_path(zos_path)
-      relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
-      parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
-      member = parts.pop
-      folder = parts.join('/')
-      conn.del_member(folder,member)
-      # VIM::command("call currentNode.open({'where': 'p'})")
-      # VIM::command('redraw')
+      let rc = 0
+python3 << EOF
+try:
+    zos_path = vim.eval('zOSNode.path.str()')
+    curr_path = vim.eval('currentNode.path.str()')
+    conn = get_connection(zos_path)
+    relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
+    parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
+    member = parts.pop()
+    folder = '/'.join(parts)
+    conn.del_member(folder,member)
+except Exception as e:
+    vim.command('let rc = 1')
+    raise e
 EOF
-      call currentNode.delete()
-      call NERDTreeRender()
-      "if the node is open in a buffer, ask the user if they want to
-      "close that buffer
-      let bufnum = bufnr("^".currentNode.path.str()."$")
-      if buflisted(bufnum)
-        let prompt = "\nNode deleted.\n\nThe file is open in buffer ". bufnum . (bufwinnr(bufnum) ==# -1 ? " (hidden)" : "") .". Delete this buffer? (yN)"
-        call s:promptToDelBuffer(bufnum, prompt)
-      endif
+      if rc == 0
+        call currentNode.delete()
+        call NERDTreeRender()
+        "if the node is open in a buffer, ask the user if they want to
+        "close that buffer
+        let bufnum = bufnr("^".currentNode.path.str()."$")
+        if buflisted(bufnum)
+          let prompt = "\nNode deleted.\n\nThe file is open in buffer ". bufnum . (bufwinnr(bufnum) ==# -1 ? " (hidden)" : "") .". Delete this buffer? (yN)"
+          call s:promptToDelBuffer(bufnum, prompt)
+        endif
 
-      redraw
-      call s:echo('Member deleted')
+        redraw
+        call s:echo('Member deleted')
+      endif
     endif
   else
     call s:echo("delete aborted")
@@ -349,153 +412,125 @@ function! NERDTreeListMembers()
   if !empty(zOSNode)
     " echo 'found'
     " echo zOSNode.path.str()
-    ruby << EOF
-    zos_path = VIM::evaluate('zOSNode.path.str()')
-    curr_path = VIM::evaluate('currentNode.path.str()')
-    conn = VIM::ZOS::Connection.new
-    conn.load_from_path(zos_path)
-    relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
-    parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
-    if !Pathname(curr_path).directory?
-      parts.pop
-    end
-    folder = parts.join('/')
-    lines = conn.list_folder(folder)
-    index = 0
-    page_count = 20
-    message = ''
-    new_path = ''
-    # found = false
-    status = 'not found'
-    result = ''
-    continue = true
-    # while lines.count - index > page_count
-    while continue
-      size = 0
-      if lines.count - index > page_count
+python3 << EOF
+zos_path = vim.eval('zOSNode.path.str()')
+curr_path = vim.eval('currentNode.path.str()')
+conn = get_connection(zos_path)
+relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
+parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
+if (Path(curr_path).is_dir() is not True):
+    parts.pop()
+folder = '/'.join(parts)
+lines = conn.list_folder(folder)
+index = 0
+page_count = 20
+message = ''
+new_path = ''
+# found = false
+status = 'not found'
+result = ''
+not_finished = True
+# while lines.count - index > page_count
+while not_finished:
+    size = 0
+    if len(lines) - index > page_count:
         size = page_count
-      else
-        size = lines.count - index
-        continue = false
-      end
-      part = lines[index,page_count]
-      i = 0
-      part.collect! do |l|
-        o = i.to_s.ljust(5) + l + "\n"
+    else:
+        size = len(lines) - index
+        not_finished = False
+    part = lines[index:index+page_count]
+    i = 0
+    part = []
+    for p in lines[index:index+page_count]:
+        part.append(str(i).ljust(5) + p)
         i = i + 1
         index = index + 1
-        o
-      end
-      if continue 
-        prompt = part.join + "Please input the member name: (or press ENTER to page through the member list)\n"
-      else
-        prompt = part.join + "End of list\nPlease input the member name:"
-      end
+    if not_finished:
+        prompt = "\n".join(part) + "\nPlease input the member name: (or press ENTER to page through the member list)\n"
+    else:
+        prompt = "\n".join(part) + "\nEnd of list\nPlease input the member name:"
 
-      VIM::command("let result = input('#{prompt}')")
-      result = VIM::evaluate('result')
-      # puts "result: #{result}"
-      if result != ''
-        if result[0,1] == "="
-          idx = result[1..-1]
-          # puts "idx: #{idx}"
-          if idx.upcase == 'X'
-            # found = true
-            status = "canceled"
-            break
-          end
-          idx = idx.to_i
-          if folder[0].upcase == folder[0]
+    vim.command("let result = input('" + prompt + "')")
+    result = vim.eval('result')
+    # puts "result: #{result}"
+    if result != '':
+        if result[0] == "=":
+            idx = result[1:]
+            # puts "idx: #{idx}"
+            if idx.upper() == 'X':
+                # found = True
+                status = "canceled"
+                break
+            idx = int(float(idx))
+            if folder[0].upper() == folder[0]:
+                # pds
+                if part[0][5:11] == 'Volume':
+                    result = part[idx][61:].strip()
+                else:
+                    result = part[idx][5:13].strip()
+            else:
+                # unix
+                result = part[idx][59:].strip()
+        if folder[0].upper() == folder[0]:
             # pds
-            if part[0][5,6] == 'Volume'
-              result = part[idx][61..-1].strip()
-            else
-              result = part[idx][5,8].strip()
-            end
-          else
+            if part[0][5:11] == 'Volume':
+                status = 'folder found'
+            else:
+                status = 'member found'
+        else:
             # unix
-            result = part[idx][59..-1].strip()
-          end
-        end
-        if folder[0].upcase == folder[0]
-          # pds
-          if part[0][5,6] == 'Volume'
-            status = 'folder found'
-          else
-            status = 'member found'
-          end
-        else
-          # unix
-          if part[idx][5,1] == 'd'
-            status = "folder found"
-          else
-            status = "member found"
-          end
-        end
-        # new_path = conn.get_member(folder,result)
-        # found = true
-        # status = "member found"
-        
+            if part[idx][5] == 'd':
+                status = "folder found"
+            else:
+                status = "member found"
+
         break
-      end
-    end
-    if status == "member found"
-      continue = true
-      while continue
+if status == "member found":
+    not_finished = True
+    while not_finished:
         prompt = "special attributes [0-none]/1-read only/2-ascii/3-1047: "
-        VIM::command("let prefix = input('#{prompt}')")
-        prefix = VIM::evaluate('prefix')
-        case prefix
-          when ''
+        vim.command("let prefix = input('%s')" % prompt)
+        prefix = vim.eval('prefix')
+        if (prefix == ''):
             break
-          when '1'
-            result = "-read only-#{result}"
+        elif (prefix == '1'):
+            result = "-read only-" + result
             break
-          when '2'
-            result = "-ascii-#{result}"
+        elif (prefix == '2'):
+            result = "-asscii-" + result
             break
-          when '3'
-            result = "-1047-#{result}"
+        elif (prefix == '3'):
+            result = "-1047-" + result
             break
-        end
-      end
 
-      prompt = "file suffix: "
-      VIM::command("let suffix = input('#{prompt}')")
-      suffix = VIM::evaluate('suffix')
-      if suffix != ''
-        result = "#{result}.#{suffix}"
-      end
+    prompt = "file suffix: "
+    vim.command("let suffix = input('%s')" % prompt)
+    suffix = vim.eval('suffix')
+    if suffix != '':
+        result = result + '.' + suffix
 
-      new_path = conn.get_member(folder,result)
-      VIM::command("let newNodeName = '#{new_path}'")
-      VIM::command("call zOSNode.refresh()")
-      if Pathname(curr_path).directory?
-        VIM::command('call currentNode.open()')
-      end
-      VIM::command("call b:NERDTree.render()")
-      VIM::command("let newTreeNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(newNodeName))")
-      VIM::command("call newTreeNode.putCursorHere(1, 0)")
-      VIM::command("call s:echo('Member downloaded')")
-    elsif status == "canceled"
-      VIM::command("call s:echo('Operation canceled')")
-    elsif status == "folder found"
-      if !result.include?('/')
-        result.gsub!('.','/')
-      end
-      dest = "#{curr_path}/#{result}"
-      FileUtils.mkdir_p dest
-      VIM::command("let newNodeName = '#{dest}'")
-      VIM::command("call zOSNode.refresh()")
-      if Pathname(curr_path).directory?
-        VIM::command('call currentNode.open()')
-      end
-      VIM::command("call b:NERDTree.render()")
-      # VIM::command("let newTreeNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(newNodeName))")
-      # VIM::command("call newTreeNode.putCursorHere(1, 0)")
-      # puts dest
-      VIM::command("call s:echo('Folder added')")
-    end
+    new_path = conn.get_member(folder,result)
+    vim.command("let newNodeName = '%s'" % new_path)
+    vim.command("call zOSNode.refresh()")
+    if Path(curr_path).is_dir():
+        vim.command('call currentNode.open()')
+    vim.command("call b:NERDTree.render()")
+    vim.command("let newTreeNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(newNodeName))")
+    vim.command("call newTreeNode.putCursorHere(1, 0)")
+    vim.command("call s:echo('Member downloaded')")
+elif status == "canceled":
+    vim.command("call s:echo('Operation canceled')")
+elif status == "folder found":
+    if result.find('/') == -1:
+        result.replace('.','/')
+    dest = join(curr_path, result)
+    Path(dest).mkdir(parents=True, exist_ok=True)
+    vim.command("let newNodeName = '%s'" % dest)
+    vim.command("call zOSNode.refresh()")
+    if Path(curr_path).is_dir():
+        vim.command('call currentNode.open()')
+    vim.command("call b:NERDTree.render()")
+    vim.command("call s:echo('Folder added')")
 EOF
   endif
 endfunction
@@ -504,34 +539,25 @@ function! NERDTreeZOSRefreshListener(event)
   let path = a:event.subject
   let action = a:event.action
   let params = a:event.params
-  " echo action
-  " echo path.str()
-  " echo params
 
-  ruby << EOF
-  require 'pathname'
-  path_name = VIM::evaluate('path.str()')
-  found = false
-  if Pathname(path_name).directory?
+python3 << EOF
+path_name = vim.eval('path.str()')
+found = False
+path = Path(path_name)
+if path.is_dir():
     # puts Pathname(path_name).basename
-    if Pathname(path_name).basename.to_s == '_spool'
-      # puts 'found _spool'
-      VIM::command('call path.flagSet.clearFlags("sdsf")')
-      VIM::command('call path.flagSet.addFlag("sdsf", "-SDSF-")')
-    else
-      Pathname(path_name).each_child do |c|
-        if c.basename().to_s == '.zos.connection'
-          VIM::command('call path.flagSet.clearFlags("zos")')
-          VIM::command('call path.flagSet.addFlag("zos", "-zOS-")')
-          found = true
-        end
-      end
-    end
-  end
-  if !found
-    VIM::command('call path.flagSet.clearFlags("zos")')
-  end
-
+    if path.name == '_spool':
+        # puts 'found _spool'
+        vim.command('call path.flagSet.clearFlags("sdsf")')
+        vim.command('call path.flagSet.addFlag("sdsf", "-SDSF-")')
+    else:
+        for c in path.iterdir():
+            if c.name == '.zos.connection':
+                vim.command('call path.flagSet.clearFlags("zos")')
+                vim.command('call path.flagSet.addFlag("zos", "-zOS-")')
+                found = True
+if found is False:
+    vim.command('call path.flagSet.clearFlags("zos")')
 EOF
 endfunction
 
@@ -540,47 +566,41 @@ augroup nerdtreezosplugin
 augroup END
 
 function! s:ZOSFileUpdate(fname)
-  " if exists('g:loaded_syntastic_plugin')
-  "   call SyntasticCheck()
-  " endif
-  "
-  " echo a:fname
   if !g:NERDTree.IsOpen()
     return
   endif
   call g:NERDTree.CursorToTreeWin()
-  try
-    " let node = b:NERDTreeRoot.findNode(g:NERDTreePath.New(a:fname))
-    " " echo node.displayString()
-    " " echo node.path.str()
-    " let node_save = node
+  " try
     let currentNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(a:fname))
     let zOSNode = s:InZOSFolder2(currentNode)
     if !empty(zOSNode)
       " echo 'found'
       " echo zOSNode.path.str()
-      ruby << EOF
-      zos_path = VIM::evaluate('zOSNode.path.str()')
-      curr_path = VIM::evaluate('currentNode.path.str()')
-      conn = VIM::ZOS::Connection.new
-      conn.load_from_path(zos_path)
-      relative_path = curr_path.gsub("#{zos_path}#{VIM::evaluate('g:NERDTreePath.Slash()')}",'')
-      parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
-      member = parts.pop
-      folder = parts.join('/')
-      msg = conn.put_member(folder,member)
-      # puts "msg: #{msg}."
-      if msg == ''
-        VIM::command("call s:echo('Member uploaded')")
-      else
-        VIM::command("call s:echoWarning('#{msg}')")
-        VIM::command("call zOSNode.refresh()")
-        VIM::command("call b:NERDTree.render()")
-      end
+python3 << EOF
+try:
+    zos_path = vim.eval('zOSNode.path.str()')
+    curr_path = vim.eval('currentNode.path.str()')
+    conn = get_connection(zos_path)
+    relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
+    parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
+    member = parts.pop()
+    folder = '/'.join(parts)
+    msg = conn.put_member(folder,member)
+    # puts "msg: #{msg}."
+    print("msg ", msg)
+except Exception as e:
+    raise e
+else:
+    if msg == '':
+        vim.command("call s:echo('Member uploaded')")
+    else:
+        vim.command("call s:echoWarning('" + msg + "')")
+        vim.command("call zOSNode.refresh()")
+        vim.command("call b:NERDTree.render()")
 EOF
     endif
-  catch
-  endtry
+  " catch
+  " endtry
 
 endfunction
 
@@ -604,6 +624,7 @@ function! s:InZOSFolder(node)
   return {}
 endfunction
 
+" In ZOS folder but not in SDSF folder, could use a better name
 function! s:InZOSFolder2(node)
   try
     " let node = b:NERDTreeRoot.findNode(path))
@@ -669,477 +690,3 @@ endfunction
 call g:NERDTreePathNotifier.AddListener("init", "NERDTreeZOSRefreshListener")
 call g:NERDTreePathNotifier.AddListener("refresh", "NERDTreeZOSRefreshListener")
 call g:NERDTreePathNotifier.AddListener("refreshFlags", "NERDTreeZOSRefreshListener")
-
-ruby << EOF
-
-require 'net/ftp'
-require 'fileutils'
-require 'yaml'
-require 'find'
-require 'pathname'
-require 'digest/sha1'
-require 'open3'
-require 'openssl'
-
-module VIM
-  module ZOS
-    class Connection
-      attr_accessor :path, :host, :user, :password
-      def initialize
-        @path = ''
-        @host = ''
-        @user = ''
-        @password = ''
-      end
-
-      def self.add_connection(path, host, user, password)
-        if File.exist?(path)
-          raise 'Connection folder already exist!'
-        end
-        FileUtils.mkdir("#{path}")
-        file_name = "#{path}/.zos.connection"
-        hash = {}
-        hash['host'] = host.force_encoding "UTF-8"
-        hash['user'] = user.force_encoding "UTF-8"
-        # hash['password'] = password.force_encoding "UTF-8"
-        # Encrypt the password
-        cipher = OpenSSL::Cipher.new("aes-256-cbc")
-        cipher.encrypt
-
-        secret = 'my little secret'
-        if ENV['MY_SECRET_KEY']
-          secret = ENV['MY_SECRET_KEY']
-        end
-
-        key = Digest::MD5.hexdigest(secret)
-        iv = cipher.random_iv
-
-        cipher.key = key
-        cipher.iv = iv
-        encrypted = cipher.update(password)
-        encrypted << cipher.final
-        hash['password'] = encrypted
-        hash['cipher_iv'] = iv
-
-        data = hash.to_yaml
-        f = File.open(file_name,'w+')
-        f.write(data)
-        f.close
-      end
-
-      def load_from_path(path)
-        @path = path
-        file_name = "#{path}/.zos.connection"
-        hash = YAML.load(File.read(file_name))
-        @host = hash['host']
-        @user = hash['user']
-        @password = hash['password']
-
-        # decrypt the password
-        decipher = OpenSSL::Cipher.new("aes-256-cbc")
-        decipher.decrypt
-
-        secret = 'my little secret'
-        if ENV['MY_SECRET_KEY']
-          secret = ENV['MY_SECRET_KEY']
-        end
-        key = Digest::MD5.hexdigest(secret)
-
-        decipher.key = key
-        decipher.iv = hash['cipher_iv']
-
-        decrypted = decipher.update(@password)
-        decrypted << decipher.final
-
-        @password = decrypted
-
-        # puts "loaded from #{file_name}"
-      end
-
-      def list_folder(folder)
-        # puts "folder : #{folder}"
-        if is_pds?(folder)
-          parts = folder.split(VIM::evaluate('g:NERDTreePath.Slash()'))
-          new_parts = []
-          parts.each do |part|
-            if part[0] == '_'
-              part[0] = '$'
-            end
-            new_parts << part
-          end
-          folder = new_parts.join('/')
-          folder = "'#{folder.gsub('/','.')}'"
-        else
-          folder = "/#{folder}"
-        end
-        Net::FTP.open(@host) do |ftp|
-          ftp.passive = true
-          ftp.login(@user, @password)
-          ftp.chdir(folder)
-          return ftp.ls
-        end
-      end
-
-      def sdsf_list()
-        # puts "folder : #{folder}"
-        lines = []
-        begin
-          Net::FTP.open(@host) do |ftp|
-            ftp.passive = true
-            ftp.login(@user, @password)
-            ftp.sendcmd('SITE FILETYPE=JES')
-            lines = ftp.ls
-          end
-        rescue Exception => e
-          return e.message
-        end
-        sdsf_folder = "#{@path}/_spool"
-        FileUtils.remove_dir(sdsf_folder, true)
-        FileUtils.mkdir_p(sdsf_folder) unless File.exist?(sdsf_folder)
-        i = 0
-        lines.each do |line|
-          # puts line
-          job_name = line[0, 8].strip()
-          # puts job_name
-          if job_name != 'JOBNAME'
-            i = i + 1
-            job_id = line[9, 8].strip()
-            # puts job_id
-            job_text = 'x'
-            if line[42..-1]
-              job_text = line[42..-1].strip()
-            end
-            if job_text.size == 0
-              job_text = 'x'
-            end
-            # puts job_text
-            job_folder = "#{sdsf_folder}/#{i.to_s.rjust(2, '0')}_#{job_name}_#{job_text}_#{job_id}"
-            # puts job_folder
-            FileUtils.mkdir_p(job_folder)
-          end
-        end
-        # puts 'SDSF list refreshed'
-        return sdsf_folder
-      end
-
-      def sdsf_get(job, step)
-        # puts "deleting #{member}"
-        parts = job.split('_')
-        job_name = parts[1]
-        # puts job_name
-        job_id = parts[3]
-        # puts job_id
-        lines = []
-        begin
-          Net::FTP.open(@host) do |ftp|
-            ftp.passive = true
-            ftp.login(@user, @password)
-            ftp.sendcmd('SITE FILETYPE=JES')
-            if step
-              parts = step.split('_')
-              step_id = parts[0]
-              dest_path = "#{@path}/_spool/#{job}/#{step}"
-              src = "#{job_id}.#{step_id}"
-              ftp.gettextfile(src, dest_path)
-            else
-              lines = ftp.list(job_id)
-              status = lines[1][27,6]
-              # puts "status: #{status}"
-              if status == 'OUTPUT'
-                lines.each do |line|
-                  if line[0, 8] == '        '
-                    step_id = line[9, 3].strip()
-                    # puts step_id
-                    if step_id != 'ID'
-                      step_name = line[13,8].strip()
-                      # puts step_name
-                      proc_step = line[22,8].strip()
-                      # puts proc_step
-                      dd_name = line[33,8].strip()
-                      # puts dd_name
-                      mem_name = "#{step_id}_#{dd_name}_#{step_name}"
-                      dest_path = "#{@path}/_spool/#{job}/#{mem_name}.txt"
-                      src = "#{job_id}.#{step_id}"
-                      # puts src
-                      # puts dest_path
-                      # puts "Retrieving #{dd_name}-#{step_name}"
-                      FileUtils.touch(dest_path)
-                      # ftp.gettextfile(src, dest_path)
-                    end
-                  end
-                end
-              else
-                return "#{job_name} - #{job_id} is not in OUTPUT status"
-              end
-            end
-          end
-        rescue Exception => e
-          return e.message
-        end
-        return ''
-        # puts "#{job_name} - #{job_id} Retrieved"
-      end
-
-      def sdsf_del(member)
-        # puts "deleting #{member}"
-        parts = member.split('_')
-        job_name = parts[1]
-        # puts job_name
-        job_id = parts[3]
-        # puts job_id
-        begin
-          Net::FTP.open(@host) do |ftp|
-            ftp.passive = true
-            ftp.login(@user, @password)
-            ftp.sendcmd('SITE FILETYPE=JES')
-            lines = ftp.delete(job_id)
-          end
-        rescue Exception => e
-          return e.message
-        end
-        job_folder = "#{@path}/_spool/#{member}"
-        # puts job_folder
-        FileUtils.remove_dir(job_folder, true)
-        # puts "#{job_name} - #{job_id} deleted"
-      end
-
-      def submit_jcl(relative_path,member)
-        src_folder = "#{@path}/#{relative_path}"
-        src = "#{src_folder}/#{member}"
-
-        begin
-          Net::FTP.open(@host) do |ftp|
-            ftp.passive = true
-            ftp.login(@user, @password)
-            ftp.sendcmd('SITE FILETYPE=JES')
-            ftp.puttextfile(src)
-          end
-        rescue Exception => e
-          return e.message
-        end
-        # puts "Submitted #{src}"
-      end
-
-      def get_member(relative_path,member)
-        # puts "path #{relative_path}"
-        # puts "member #{member}"
-        dest_member = member.dup
-        if dest_member[0] == '$'
-          dest_member[0] = '_'
-        end
-        encoding = 'IBM-037'
-        if member.start_with?('-read only-')
-          member = member.gsub('-read only-','')
-        end
-        if member.start_with?('-ascii-')
-          member = member.gsub('-ascii-','')
-          encoding = 'ISO8859-1'
-        end
-        if member.start_with?('-1047-')
-          member = member.gsub('-1047-','')
-          encoding = 'IBM-1047'
-        end
-        if member[0] == '_'
-          member[0] = '$'
-        end
-        source_member = member.dup
-        src = ''
-        if is_pds?(relative_path)
-          source_member = member.split('.')[0].upcase
-          parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
-          new_parts = []
-          parts.each do |part|
-            if part[0] == '_'
-              part[0] = '$'
-            end
-            new_parts << part
-          end
-          folder = new_parts.join('/')
-          src = "'#{folder.gsub('/','.')}(#{source_member})'"
-        else
-          src = "/#{relative_path}/#{source_member}"
-        end
-        dest_folder = "#{@path}/#{relative_path}"
-        FileUtils.mkdir_p(dest_folder) unless File.exist?(dest_folder)
-        dest = "#{dest_folder}/#{dest_member}"
-        # puts "dest: #{dest}"
-        # begin
-          Net::FTP.open(@host) do |ftp|
-            ftp.passive = true
-            ftp.login(@user, @password)
-            # ftp.sendcmd("SITE SBD=(IBM-1047,ISO8859-1)")
-            cmd = "SITE SBD=(#{encoding},ISO8859-1)"
-            # puts cmd
-            ftp.sendcmd(cmd)
-            ftp.gettextfile(src, dest)
-          end
-        # rescue Exception => e
-        #   return e.message
-        # end
-        backup = "#{dest}.zos.backup"
-        diff = "#{dest}.zos.diff"
-        # FileUtils.rm(backup) if FileUtils.exist?(backup)        
-        FileUtils.cp(dest, backup)
-        FileUtils.rm(diff) if File.exist?(diff)
-        # create_cksum_file(dest)
-        # puts "Downladed to #{dest}"
-        return dest
-      end
-
-      def del_member(relative_path,member)
-        # puts "path #{relative_path}"
-        # puts "member #{member}"
-        dest_member = member.dup
-        if member.start_with?('-read only-')
-          member = member.gsub('-read only-','')
-        end
-        if member.start_with?('-ascii-')
-          member = member.gsub('-ascii-','')
-        end
-        if member.start_with?('-1047-')
-          member = member.gsub('-1047-','')
-        end
-        if member[0] == '_'
-          member[0] = '$'
-        end
-        source_member = member.dup
-        src = ''
-        if is_pds?(relative_path)
-          source_member = member.split('.')[0].upcase
-          # src = "'#{relative_path.gsub('/','.')}(#{source_member})'"
-          parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
-          new_parts = []
-          parts.each do |part|
-            if part[0] == '_'
-              part[0] = '$'
-            end
-            new_parts << part
-          end
-          folder = new_parts.join('/')
-          src = "'#{folder.gsub('/','.')}(#{source_member})'"
-        else
-          src = "/#{relative_path}/#{source_member}"
-        end
-        backup_file = "#{@path}/#{relative_path}/#{member}.zos.backup"
-        FileUtils.rm(backup_file) if File.exist?(backup_file)
-        begin
-          Net::FTP.open(@host) do |ftp|
-            ftp.passive = true
-            ftp.login(@user, @password)
-            ftp.delete(src)
-          end
-        rescue Exception => e
-          return e.message
-        end
-        return src
-      end
-
-      def put_member(relative_path,member, force=false)
-        if member.start_with?('-read only-')
-          return 'read only, not uploaded'
-        end
-        if (member.end_with?('.zos.diff') || member.end_with?('.zos.temp'))
-          return 'temp file, not uploaded'
-        end
-        src_folder = "#{@path}/#{relative_path}"
-        dest = ''
-        encoding = 'IBM-037'
-        dest_member = member.dup
-        if member.start_with?('-ascii-')
-          dest_member = member.gsub('-ascii-','')
-          encoding = 'ISO8859-1'
-        end
-        if member.start_with?('-1047-')
-          dest_member = member.gsub('-1047-','')
-          encoding = 'IBM-1047'
-        end
-        if dest_member[0] == '_'
-          dest_member[0] = '$'
-        end
-        if is_pds?(relative_path)
-          parts = relative_path.split(VIM::evaluate('g:NERDTreePath.Slash()'))
-          new_parts = []
-          parts.each do |part|
-            if part[0] == '_'
-              part[0] = '$'
-            end
-            new_parts << part
-          end
-          folder = new_parts.join('/')
-          dest = "'#{folder.gsub('/','.')}(#{dest_member.split('.')[0]})'"
-        else
-          dest = "/#{relative_path}/#{dest_member}"
-        end
-        src = "#{src_folder}/#{member}"
-        # puts "src: #{src}"
-        # puts "dest: #{dest}"
-        backup_file = "#{src}.zos.backup"
-        temp_file = "#{src}.zos.temp"
-        diff_file = "#{src}.zos.diff"
-        if File.exist?(backup_file) && !force
-          # get the file first to compare with the backup
-          begin
-            Net::FTP.open(@host) do |ftp|
-              ftp.passive = true
-              ftp.login(@user, @password)
-              ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
-              ftp.gettextfile(dest, temp_file)
-            end
-          rescue Exception => e
-            # puts e.message
-            # puts e.class
-            FileUtils.rm(temp_file) if File.exist?(temp_file)
-            return e.message
-            # FileUtils.touch(temp_file)
-          end
-          if FileUtils.identical?(temp_file, backup_file)
-            FileUtils.rm(temp_file) if File.exist?(temp_file)
-          else
-            command = "diff -DVERSION1 '#{temp_file}' '#{backup_file}' > '#{diff_file}'"
-            # puts command
-            system(command)
-            FileUtils.rm(temp_file) if File.exist?(temp_file)
-            return "file changed, check the diff file #{diff_file}" 
-          end
-        end
-        begin
-          Net::FTP.open(@host) do |ftp|
-            ftp.passive = true
-            ftp.login(@user, @password)
-            ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
-            ftp.puttextfile(src, dest)
-            # puts 'upload: ' + src
-          end
-        rescue Exception => e
-          return e.message
-        end
-        # puts "Uploaded to #{dest}"
-        # FileUtils.rm(backup_file) if FileUtils.exist?(backup_file)        
-        begin
-          Net::FTP.open(@host) do |ftp|
-            ftp.passive = true
-            ftp.login(@user, @password)
-            ftp.sendcmd("SITE SBD=(#{encoding},ISO8859-1)")
-            ftp.gettextfile(dest, backup_file)
-            # puts "got: #{backup_file}"
-          end
-        rescue Exception => e
-          return e.message
-        end
-        FileUtils.rm(diff_file) if File.exist?(diff_file)
-        # FileUtils.cp(src, backup_file)
-        # create_cksum_file(src)
-        return ''
-      end
-
-      private
-      def is_pds?(folder)
-        return folder[0].upcase == folder[0]
-      end
-
-    end
-  end
-end
-
-EOF
-
