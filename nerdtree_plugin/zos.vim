@@ -12,56 +12,29 @@ let s:plugin_root_dir = fnamemodify(resolve(expand('<sfile>:p')), ':h')
 
 python3 << EOF
 import sys
-from os.path import normpath, join
 import vim
 import os
-import yaml
-import io
 from pathlib import Path
 plugin_root_dir = vim.eval('s:plugin_root_dir')
-python_root_dir = normpath(join(plugin_root_dir, '..', 'python'))
+python_root_dir = os.path.normpath(os.path.join(plugin_root_dir, '..', 'python'))
 sys.path.insert(0, python_root_dir)
 
-from zos import Connection, AESCipher
-
-def get_connection(path):
-    file_name = join(path, ".zos.connection")
-    with io.open(file_name, 'r') as stream:
-        try:
-            data = yaml.load(stream)
-        except yaml.YAMLError as exc:
-            print(exc)
-            return
-    host = data['host']
-    user  = data['user']
-    cipher = AESCipher()
-    password = cipher.decrypt(data['password'])
-    conn = Connection(path, host, user, password)
-    return conn
-
-def add_connection(path, host, user, password):
-    if Path(path).exists():
-       raise Exception('Connection folder already exists')
-    Path(join(path, '_spool')).mkdir(parents=True, exist_ok=True)
-    file_name = join(path, '.zos.connection')
-    cipher = AESCipher()
-    encrypted = cipher.encrypt(password)
-    data = {}
-    data['host'] = host
-    data['user'] = user
-    data['password'] = encrypted
-    with io.open(file_name, 'w') as f:
-        yaml.dump(data, f, default_flow_style=False)
+import zosutil
 
 EOF
 
+" ZOS Folder - root folder for the zos connection, including both FILE and SDSF folder
+" SDSF Folder - special '_spool' folder for SDSF
+" ZOS File Folder - file folders inside the ZOS folder, excluding the special SDSF folder
+"
 call add(NERDTreeIgnore,'\.zos.connection$')
 call add(NERDTreeIgnore,'\.zos.backup$')
 
 call NERDTreeAddMenuSeparator()
-call NERDTreeAddMenuItem({'text': '(z) Add a z/OS Connection', 'shortcut': 'z', 'callback': 'NERDTreeAddConnection'})
-call NERDTreeAddMenuItem({'text': '(f) Add a PDS/folder', 'shortcut': 'f', 'isActiveCallback': 'NERDTreezOSEnabled2', 'callback': 'NERDTreeAddFolder'})
-call NERDTreeAddMenuItem({'text': '(l) List members', 'shortcut': 'l', 'isActiveCallback': 'NERDTreezOSEnabled2',  'callback': 'NERDTreeListMembers'})
+call NERDTreeAddMenuItem({'text': '(z) Add a z/OS connection profile', 'shortcut': 'z', 'callback': 'NERDTreeAddConnection'})
+call NERDTreeAddMenuItem({'text': '(y) Update the z/OS connection profile', 'shortcut': 'y', 'isActiveCallback': 'NERDTreezOSEnabled', 'callback': 'NERDTreeUpdateConnection'})
+call NERDTreeAddMenuItem({'text': '(f) Add a PDS of USS folder mapping', 'shortcut': 'f', 'isActiveCallback': 'NERDTreezOSEnabled', 'callback': 'NERDTreeAddFolder'})
+call NERDTreeAddMenuItem({'text': '(l) List members', 'shortcut': 'l', 'isActiveCallback': 'NERDTreezOSFileEnabled',  'callback': 'NERDTreeListMembers'})
 call NERDTreeAddMenuItem({'text': '(r) Refresh(re-download) the member', 'shortcut': 'r', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreeGetMember'})
 call NERDTreeAddMenuItem({'text': '(u) Force update the z/OS copy with the local copy', 'shortcut': 'u', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreePutMember'})
 call NERDTreeAddMenuItem({'text': '(s) Retrieve SDSF spool', 'shortcut': 's', 'isActiveCallback': 'NERDTreezOSEnabled',  'callback': 'NERDTreeSDSFList'})
@@ -69,9 +42,9 @@ call NERDTreeAddMenuItem({'text': '(i) Retrieve job output', 'shortcut': 'i', 'i
 call NERDTreeAddMenuItem({'text': '(p) Delete job output', 'shortcut': 'p', 'isActiveCallback': 'NERDTreeSDSFEnabled',  'callback': 'NERDTreeSDSFDel'})
 call NERDTreeAddMenuItem({'text': '(p) Delete remotely and locally', 'shortcut': 'p', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreeDelMember'})
 
-function! NERDTreezOSEnabled2()
+function! NERDTreezOSFileEnabled()
   let currentNode = g:NERDTreeFileNode.GetSelected()
-  let zOSNode = s:InZOSFolder2(currentNode)
+  let zOSNode = s:InZOSFileFolder(currentNode)
   if !empty(zOSNode)
     return 1
   endif
@@ -98,7 +71,7 @@ endfunction
 
 function! NERDTreezOSMember()
   let currentNode = g:NERDTreeFileNode.GetSelected()
-  let zOSNode = s:InZOSFolder2(currentNode)
+  let zOSNode = s:InZOSFileFolder(currentNode)
   let result = 0
   if !empty(zOSNode)
 python3 << EOF
@@ -126,23 +99,87 @@ function! s:promptToDelBuffer(bufnum, msg)
     endif
 endfunction
 
+com! ZPassword call BulkChgPassword()
+
+function! BulkChgPassword()
+  let password = input('Input the new password: ')
+  let rc = 0
+python3 << EOF
+try:
+    password = vim.eval('password')
+    zosutil.zos_update_password(password)
+except Exception as e:
+    vim.command('let rc = 1')
+    raise e
+EOF
+  if rc == 0
+    call s:echo('Password Updated')
+  endif
+endfunction
+
+com! ZClean call CleanFiles()
+
+function! CleanFiles()
+  let rc = 0
+python3 << EOF
+try:
+    zosutil.zos_clean()
+except Exception as e:
+    vim.command('let rc = 1')
+    raise e
+EOF
+  if rc == 0
+    call s:echo('Completed Successfully')
+  endif
+endfunction
+
+com! ZRefresh call RefreshFiles(expand("%:p"))
+function! RefreshFiles(fname)
+  let forceDelete = input('Force deleting the local copy if not found on remote? [yN]: ')
+  let forceReplace = input('Force replacing the local copy if it is different from remote copy? [yN]: ')
+  call g:NERDTree.CursorToTreeWin()
+  let node = b:NERDTreeRoot.findNode(g:NERDTreePath.New(a:fname))
+  let zOSNode = s:InZOSFolder(node)
+  if !empty(zOSNode)
+    let rc = 0
+python3 << EOF
+try:
+    force_delete = vim.eval('forceDelete')
+    force_replace = vim.eval('forceReplace')
+    if force_delete.upper() == 'Y':
+        force_delete = True
+    else:
+        force_delete = False
+    if force_replace.upper() == 'Y':
+        force_replace = True
+    else:
+        force_replace = False
+    zos_path = vim.eval('zOSNode.path.str()')
+    conn = zosutil.get_connection(zos_path)
+    conn.refresh_files(force_delete, force_replace)
+except Exception as e:
+    vim.command('let rc = 1')
+    raise e
+EOF
+    if rc == 0
+      call s:echo('Completed Successfully')
+    endif
+  endif
+endfunction
+
 com! JCLSubmit call SubJCL(expand("%:p"))
 function! SubJCL(fname)
   call g:NERDTree.CursorToTreeWin()
   let node = b:NERDTreeRoot.findNode(g:NERDTreePath.New(a:fname))
-  let zOSNode = s:InZOSFolder2(node)
-  let rc = 0
+  let zOSNode = s:InZOSFolder(node)
   if !empty(zOSNode)
+    let rc = 0
 python3 << EOF
 try:
     zos_path = vim.eval('zOSNode.path.str()')
     curr_path = vim.eval('node.path.str()')
-    conn = get_connection(zos_path)
-    relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
-    parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
-    member = parts.pop()
-    folder = '/'.join(parts)
-    conn.submit_jcl(folder,member)
+    conn = zosutil.get_connection(zos_path)
+    conn.submit_jcl(curr_path)
 except Exception as e:
     vim.command('let rc = 1')
     raise e
@@ -154,21 +191,44 @@ EOF
 endfunction
 
 function! NERDTreeAddConnection()
-  let name = input('Input the connection name: ')
+  let name = input('Input the connection profile name: ')
   let host = input('Input the host address: ')
   let user = input('Input the user id: ')
   let password = input('Input the password: ')
   let rc = 0
 python3 << EOF
 try:
-    add_connection('./' + vim.eval('name'), vim.eval('host'), vim.eval('user'), vim.eval('password'))
+    zosutil.add_connection('./' + vim.eval('name'), vim.eval('host'), vim.eval('user'), vim.eval('password'))
 except Exception as e:
     vim.command('let rc = 1')
     raise e
 EOF
   if rc == 0
     call b:NERDTree.render()
-    call s:echo('Connection added')
+    call s:echo('Connection profile added')
+  endif
+endfunction
+
+function! NERDTreeUpdateConnection()
+  let host = input('Input the host address (Press ENTER if no change): ')
+  let user = input('Input the user id (Press ENTER if no change): ')
+  let password = input('Input the password (Press ENTER if no change): ')
+  let currentNode = g:NERDTreeFileNode.GetSelected()
+  let zOSNode = s:InZOSFolder(currentNode)
+  if !empty(zOSNode)
+    let rc = 0
+    python3 << EOF
+zos_path = vim.eval('zOSNode.path.str()')
+try:
+    zosutil.update_connection(zos_path, vim.eval('host'), vim.eval('user'), vim.eval('password'))
+except Exception as e:
+    vim.command('let rc = 1')
+    raise e
+EOF
+    if rc == 0
+      call b:NERDTree.render()
+      call s:echo('Connection profile updated')
+    endif
   endif
 endfunction
 
@@ -181,7 +241,7 @@ python3 << EOF
 try:
     zos_path = vim.eval('zOSNode.path.str()')
     curr_path = vim.eval('currentNode.path.str()')
-    conn = get_connection(zos_path)
+    conn = zosutil.get_connection(zos_path)
     new_path = conn.sdsf_list()
     vim.command("let newNodeName = '%s'" % new_path)
 except Exception as e:
@@ -206,7 +266,7 @@ function! NERDTreeSDSFGet()
     python3 << EOF
 zos_path = vim.eval('zOSNode.path.str()')
 curr_path = vim.eval('currentNode.path.str()')
-conn = get_connection(zos_path)
+conn = zosutil.get_connection(zos_path)
 relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
 parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
 step = None
@@ -238,7 +298,7 @@ python3 << EOF
 try:
     zos_path = vim.eval('zOSNode.path.str()')
     curr_path = vim.eval('currentNode.path.str()')
-    conn = get_connection(zos_path)
+    conn = zosutil.get_connection(zos_path)
     relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
     parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
     if (Path(curr_path).is_dir() is not True):
@@ -263,7 +323,7 @@ endfunction
 function! NERDTreeAddFolder()
   let name = input('Input the PDS/folder name: ')
   let currentNode = g:NERDTreeFileNode.GetSelected()
-  let zOSNode = s:InZOSFolder2(currentNode)
+  let zOSNode = s:InZOSFolder(currentNode)
   if !empty(zOSNode)
     let rc = 0
 python3 << EOF
@@ -277,12 +337,12 @@ try:
         new_parts = []
         for part in parts:
             if (part[0] == '$'):
-                part[0] = '_'
+                part = '_' + part[1:]
             new_parts.append(part)
         member = '/'.join(parts)
 
-    dest = join(zos_folder, member)
-    Path(dest).mkdir(parents=True, exist_OK=True)
+    dest = os.path.join(zos_folder, member)
+    Path(dest).mkdir(parents=True, exist_ok=True)
 except Exception as e:
     vim.command('let rc = 1')
     raise e
@@ -297,19 +357,15 @@ endfunction
 
 function! NERDTreeGetMember()
   let currentNode = g:NERDTreeFileNode.GetSelected()
-  let zOSNode = s:InZOSFolder2(currentNode)
+  let zOSNode = s:InZOSFolder(currentNode)
   if !empty(zOSNode)
     let rc = 0
 python3 << EOF
 try:
     zos_path = vim.eval('zOSNode.path.str()')
     curr_path = vim.eval('currentNode.path.str()')
-    conn = get_connection(zos_path)
-    relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
-    parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
-    member = parts.pop()
-    folder = '/'.join(parts)
-    conn.get_member(folder, member)
+    conn = zosutil.get_connection(zos_path)
+    conn.get_member(curr_path)
 except Exception as e:
     vim.command('let rc = 1')
     raise e
@@ -326,7 +382,7 @@ endfunction
 
 function! NERDTreePutMember()
   let currentNode = g:NERDTreeFileNode.GetSelected()
-  let zOSNode = s:InZOSFolder2(currentNode)
+  let zOSNode = s:InZOSFolder(currentNode)
   if !empty(zOSNode)
     " echo 'found'
     " echo zOSNode.path.str()
@@ -335,12 +391,8 @@ python3 << EOF
 try:
     zos_path = vim.eval('zOSNode.path.str()')
     curr_path = vim.eval('currentNode.path.str()')
-    conn = get_connection(zos_path)
-    relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
-    parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
-    member = parts.pop()
-    folder = '/'.join(parts)
-    conn.put_member(folder,member, True)
+    conn = zosutil.get_connection(zos_path)
+    conn.put_member(curr_path, True)
 except Exception as e:
     vim.command('let rc = 1')
     raise e
@@ -365,7 +417,7 @@ function! NERDTreeDelMember()
   let choice = nr2char(getchar())
   let confirmed = choice ==# 'y'
   if confirmed
-    let zOSNode = s:InZOSFolder2(currentNode)
+    let zOSNode = s:InZOSFolder(currentNode)
     if !empty(zOSNode)
       " echo 'found'
       " echo zOSNode.path.str()
@@ -374,12 +426,8 @@ python3 << EOF
 try:
     zos_path = vim.eval('zOSNode.path.str()')
     curr_path = vim.eval('currentNode.path.str()')
-    conn = get_connection(zos_path)
-    relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
-    parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
-    member = parts.pop()
-    folder = '/'.join(parts)
-    conn.del_member(folder,member)
+    conn = zosutil.get_connection(zos_path)
+    conn.del_member(curr_path)
 except Exception as e:
     vim.command('let rc = 1')
     raise e
@@ -408,29 +456,23 @@ function! NERDTreeListMembers()
   let currentNode = g:NERDTreeFileNode.GetSelected()
   " echo 'current node'
   " echo currentNode.path.str()
-  let zOSNode = s:InZOSFolder2(currentNode)
+  let zOSNode = s:InZOSFolder(currentNode)
   if !empty(zOSNode)
     " echo 'found'
     " echo zOSNode.path.str()
 python3 << EOF
 zos_path = vim.eval('zOSNode.path.str()')
 curr_path = vim.eval('currentNode.path.str()')
-conn = get_connection(zos_path)
-relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
-parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
-if (Path(curr_path).is_dir() is not True):
-    parts.pop()
-folder = '/'.join(parts)
-lines = conn.list_folder(folder)
+conn = zosutil.get_connection(zos_path)
+local_sub_folder = conn.parse_local_path(curr_path)['local_sub_folder']
+lines = conn.list_folder(curr_path)
 index = 0
 page_count = 20
 message = ''
 new_path = ''
-# found = false
 status = 'not found'
 result = ''
 not_finished = True
-# while lines.count - index > page_count
 while not_finished:
     size = 0
     if len(lines) - index > page_count:
@@ -452,31 +494,32 @@ while not_finished:
 
     vim.command("let result = input('" + prompt + "')")
     result = vim.eval('result')
-    # puts "result: #{result}"
     if result != '':
         if result[0] == "=":
             idx = result[1:]
-            # puts "idx: #{idx}"
             if idx.upper() == 'X':
-                # found = True
                 status = "canceled"
                 break
             idx = int(float(idx))
-            if folder[0].upper() == folder[0]:
+            if local_sub_folder[0].upper() == local_sub_folder[0]:
                 # pds
                 if part[0][5:11] == 'Volume':
+                    # dataset list
                     result = part[idx][61:].strip()
                 else:
+                    # member list
                     result = part[idx][5:13].strip()
             else:
                 # unix
                 result = part[idx][59:].strip()
-        if folder[0].upper() == folder[0]:
+        if local_sub_folder[0].upper() == local_sub_folder[0]:
             # pds
             if part[0][5:11] == 'Volume':
                 status = 'folder found'
             else:
                 status = 'member found'
+            if result[0] == '$':
+                result = '_' + result[1:]
         else:
             # unix
             if part[idx][5] == 'd':
@@ -509,7 +552,8 @@ if status == "member found":
     if suffix != '':
         result = result + '.' + suffix
 
-    new_path = conn.get_member(folder,result)
+    local_path = os.path.join(zos_path, local_sub_folder, result)
+    new_path = conn.get_member(local_path)
     vim.command("let newNodeName = '%s'" % new_path)
     vim.command("call zOSNode.refresh()")
     if Path(curr_path).is_dir():
@@ -523,7 +567,7 @@ elif status == "canceled":
 elif status == "folder found":
     if result.find('/') == -1:
         result.replace('.','/')
-    dest = join(curr_path, result)
+    dest = os.path.join(curr_path, result)
     Path(dest).mkdir(parents=True, exist_ok=True)
     vim.command("let newNodeName = '%s'" % dest)
     vim.command("call zOSNode.refresh()")
@@ -572,7 +616,7 @@ function! s:ZOSFileUpdate(fname)
   call g:NERDTree.CursorToTreeWin()
   " try
     let currentNode = b:NERDTreeRoot.findNode(g:NERDTreePath.New(a:fname))
-    let zOSNode = s:InZOSFolder2(currentNode)
+    let zOSNode = s:InZOSFolder(currentNode)
     if !empty(zOSNode)
       " echo 'found'
       " echo zOSNode.path.str()
@@ -580,12 +624,8 @@ python3 << EOF
 try:
     zos_path = vim.eval('zOSNode.path.str()')
     curr_path = vim.eval('currentNode.path.str()')
-    conn = get_connection(zos_path)
-    relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
-    parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
-    member = parts.pop()
-    folder = '/'.join(parts)
-    msg = conn.put_member(folder,member)
+    conn = zosutil.get_connection(zos_path)
+    msg = conn.put_member(curr_path)
     # puts "msg: #{msg}."
     print("msg ", msg)
 except Exception as e:
@@ -606,13 +646,8 @@ endfunction
 
 function! s:InZOSFolder(node)
   try
-    " let node = b:NERDTreeRoot.findNode(path))
     let node = a:node
-    " echo node.displayString()
-    " echo node.path.str()
     while !empty(node)
-      " echo node.displayString()
-      " echo node.path.str()
       if node.displayString() =~ '\[-zOS-\]'
         return node
       endif
@@ -624,16 +659,14 @@ function! s:InZOSFolder(node)
   return {}
 endfunction
 
-" In ZOS folder but not in SDSF folder, could use a better name
-function! s:InZOSFolder2(node)
+function! s:InZOSFileFolder(node)
   try
-    " let node = b:NERDTreeRoot.findNode(path))
     let node = a:node
-    " echo node.displayString()
-    " echo node.path.str()
+    " ZOS root folder, return empty value
+    if node.displayString() =~ '\[-zOS-\]'
+      return {}
+    endif
     while !empty(node)
-      " echo node.displayString()
-      " echo node.path.str()
       if node.displayString() =~ '\[-SDSF-\]'
         return {}
       endif
@@ -650,13 +683,12 @@ endfunction
 
 function! s:InSDSFFolder(node)
   try
-    " let node = b:NERDTreeRoot.findNode(path))
     let node = a:node
-    " echo node.displayString()
-    " echo node.path.str()
+    " SDSF root folder, return empty value
+    if node.displayString() =~ '\[-SDSF-\]'
+      return {}
+    endif
     while !empty(node)
-      " echo node.displayString()
-      " echo node.path.str()
       if node.displayString() =~ '\[-SDSF-\]'
         return node
       endif

@@ -1,4 +1,3 @@
-from os.path import join
 import vim
 import os
 import io
@@ -11,9 +10,10 @@ from pathlib import Path
 from Crypto import Random
 from Crypto.Cipher import AES
 
-def is_pds(folder):
-    print("is_pds", folder)
-    return folder[0].upper() == folder[0]
+ZOS_BACKUP_SUFFIX = ".zos.backup"
+ZOS_TEMP_SUFFIX = ".zos.temp"
+ZOS_DIFF_SUFFIX = ".zos.diff"
+ZOS_CONN_FILE = ".zos.connection"
 
 class AESCipher:
     def __init__(self):
@@ -44,28 +44,20 @@ class AESCipher:
 
 class Connection:
     def __init__(self, path, host, user, password):
-        self.path = path
+        self.root_path = path
         self.host = host
         self.user = user
         self.password = password
 
-    def list_folder(self, folder):
-        path = "/" + folder
-        print("folder", folder)
-        if is_pds(folder):
-            parts = folder.split(vim.eval('g:NERDTreePath.Slash()'))
-            new_parts = []
-            for p in parts:
-                if (p[0] == '_'):
-                    p[0] = '$'
-                new_parts.append(p)
-            path = '/'.join(new_parts)
-            path = "'" + path.replace('/', '.') + "'"
+    def list_folder(self, local_path):
+        result = self.parse_local_path(local_path)
+        local_sub_folder = result['local_sub_folder']
+        remote_path = self._remote_path(local_sub_folder)
         # ftp
-        print("path", path)
+        print("remote_path", remote_path)
         ftp = ftplib.FTP(self.host)
         ftp.login(self.user, self.password)
-        ftp.cwd(path)
+        ftp.cwd(remote_path)
         data = []
         ftp.retrlines('LIST', data.append)
         ftp.quit()
@@ -79,10 +71,10 @@ class Connection:
         ftp.retrlines('LIST', lines.append)
         ftp.quit()
 
-        sdsf_folder = join(self.path, "_spool")
-        shutil.rmtree(sdsf_folder)
-        if Path(sdsf_folder).exists() is not True:
-            Path(sdsf_folder).mkdir(parents=True, exist_ok=True)
+        sdsf_dir_path = os.path.join(self.root_path, "_spool")
+        shutil.rmtree(sdsf_dir_path)
+        if Path(sdsf_dir_path).exists() is not True:
+            Path(sdsf_dir_path).mkdir(parents=True, exist_ok=True)
 
         i = 0
         for line in lines:
@@ -95,10 +87,10 @@ class Connection:
                     job_text = line[42:].strip()
                 if len(job_text) == 0:
                     job_text = 'x'
-                job_folder = "%s/%s_%s_%s_%s" % (sdsf_folder, str(i).rjust(2,
+                job_dir_path = "%s/%s_%s_%s_%s" % (sdsf_dir_path, str(i).rjust(2,
                     '0'), job_name, job_text, job_id)
-                Path(job_folder).mkdir(parents=True, exist_ok=True)
-        return sdsf_folder
+                Path(job_dir_path).mkdir(parents=True, exist_ok=True)
+        return sdsf_dir_path
 
     def sdsf_get(self, job, step):
         parts = job.split('_')
@@ -114,7 +106,7 @@ class Connection:
         if step is not None:
             parts = step.split('_')
             step_id = parts[0]
-            dest= "%s/_spool/%s/%s" % (self.path, job, step)
+            dest= "%s/_spool/%s/%s" % (self.root_path, job, step)
             src = job_id + '.' + step_id
             ftp.retrlines('RETR ' + src, lines.append)
             ftp.quit()
@@ -135,7 +127,7 @@ class Connection:
                             dd_name = line[33:41].strip()
                             mem_name = "%s_%s_%s" % (step_id, dd_name,
                                       step_name)
-                            dest= "%s/_spool/%s/%s.txt" % (self.path,
+                            dest= "%s/_spool/%s/%s.txt" % (self.root_path,
                                       job, mem_name)
                             src = "%s.%s" % (job_id, step_id)
                             Path(dest).touch()
@@ -153,63 +145,94 @@ class Connection:
         ftp.sendcmd('SITE FILETYPE=JES')
         lines = ftp.delete(job_id)
         ftp.quit()
-        job_folder = "%s/_spool/%s" % (self.path, member)
-        shutil.rmtree(job_folder)
+        job_dir_path = "%s/_spool/%s" % (self.root_path, member)
+        shutil.rmtree(job_dir_path)
         return
 
-    def submit_jcl(self, relative_path, member):
-
-        src = join(self.path, relative_path, member)
+    def submit_jcl(self, local_path):
+        result = self.parse_local_path(local_path)
+        local_member = result['local_member']
         ftp = ftplib.FTP(self.host)
         ftp.login(self.user, self.password)
         ftp.sendcmd('SITE FILETYPE=JES')
-        with io.open(src, 'rb') as f:
-            ftp.storlines('STOR ' + member, f)
+        with io.open(local_path, 'rb') as f:
+            ftp.storlines('STOR ' + local_member, f)
         ftp.quit()
 
-    def get_member(self, relative_path, member):
-        dest_member = '' + member
-        if dest_member[0] == '$':
-            dest_member[0] = '_'
-        encoding = 'IBM-037'
-        if member.startswith('-read only-'):
-            member = member.replace('-read only-','')
-        if member.startswith('-ascii-'):
-            member = member.replace('-ascii-','')
-            encoding = 'ISO8859-1'
-        if member.startswith('-1047-'):
-            member = member.replace('-1047-','')
-            encoding = 'IBM-1047'
-        if member[0] == '_':
-           member[0] = '$'
-        source_member = '' + member
-        src = ''
-        if is_pds(relative_path):
-            source_member = member.split('.')[0].upper()
-            parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
-            new_parts = []
-            for part in parts:
-                if part[0] == '_':
-                    part[0] = '$'
-                new_parts.append(part)
-            folder = '/'.join(new_parts)
-            src = "'%s(%s)'" % (folder.replace('/','.'), source_member)
+    def _remote_path(self, local_sub_folder, local_member=None):
+        path = ''
+        if self._is_pds(local_sub_folder):
+            path = self._path_to_pds(local_sub_folder, local_member)
         else:
-            src = "/#{relative_path}/#{source_member}"
-            src = "/%s/%s" % (relative_path, source_member)
-        dest_folder = join(self.path, relative_path)
-        if Path(dest_folder).exists() is not True:
-            Path(dest_folder).mkdir(parents=True, exist_ok=True)
-        dest  = join(dest_folder, dest_member)
-        self._download_txt_file(src, dest, encoding)
-        backup = "%s.zos.backup" % dest
-        diff = "%s.zos.diff" % dest
-        shutil.copyfile(dest, backup)
-        if Path(diff).exists():
-            os.remove(diff)
-        return dest
+            if local_member is None:
+                path = "/%s" % local_sub_folder
+            else:
+                remote_member = self._sanitize_remote_member(local_member)
+                path = "/%s/%s" % (local_sub_folder, remote_member)
+        return path
 
-    def _download_txt_file(self, src, dest, encoding='IBM-037'):
+    @staticmethod
+    def _sanitize_remote_member(local_member):
+        remote_member = '' + local_member
+        if remote_member.startswith('-read only-'):
+            remote_member = remote_member.replace('-read only-','')
+        if remote_member.startswith('-ascii-'):
+            remote_member = remote_member.replace('-ascii-','')
+        if remote_member.startswith('-1047-'):
+            remote_member = remote_member.replace('-1047-','')
+        return remote_member
+
+    def _path_to_pds(self, local_sub_folder, local_member):
+        parts = local_sub_folder.split(vim.eval('g:NERDTreePath.Slash()'))
+        new_parts = []
+        for p in parts:
+            if (p[0] == '_'):
+                p = '$' + p[1:]
+            new_parts.append(p)
+        dst = '/'.join(new_parts).replace('/', '.')
+        path = ''
+        if local_member is None:
+            path = "'" + dst + "'"
+        else:
+            remote_member = self._sanitize_remote_member(local_member)
+            if remote_member[0] == '_':
+                remote_member = '$'+ remote_member[1:]
+            remote_member = remote_member.split('.')[0].upper()
+            path = "'%s(%s)'" % (dst, remote_member)
+        return path
+
+    @staticmethod
+    def _encoding(local_member):
+        encoding = 'IBM-037'
+        if local_member.startswith('-ascii-'):
+            encoding = 'ISO8859-1'
+        if local_member.startswith('-1047-'):
+            encoding = 'IBM-1047'
+        return encoding
+
+    @staticmethod
+    def _is_pds(local_sub_folder):
+        return local_sub_folder[0].upper() == local_sub_folder[0]
+
+    def get_member(self, local_path):
+        result = self.parse_local_path(local_path)
+        local_sub_folder = result['local_sub_folder']
+        local_member = result['local_member']
+        encoding = self._encoding(local_member)
+        remote_path = self._remote_path(local_sub_folder, local_member)
+        local_dir_path = os.path.dirname(local_path)
+        if Path(local_dir_path).exists() is not True:
+            Path(local_dir_path).mkdir(parents=True, exist_ok=True)
+        local_path  = os.path.join(local_dir_path, local_member)
+        self._download_txt_file(remote_path, local_path, encoding)
+        backup_path = local_path + ZOS_BACKUP_SUFFIX
+        diff_path = local_path + ZOS_DIFF_SUFFIX
+        shutil.copyfile(local_path, backup_path)
+        if Path(diff_path).exists():
+            os.remove(diff_path)
+        return local_path
+
+    def _download_txt_file(self, remote_path, local_path, encoding='IBM-037'):
         # ftp
         ftp = ftplib.FTP(self.host)
         ftp.login(self.user, self.password)
@@ -217,113 +240,143 @@ class Connection:
         # puts cmd
         ftp.sendcmd(cmd)
         lines = []
-        ftp.retrlines('RETR ' + src, lines.append)
+        ftp.retrlines('RETR ' + remote_path, lines.append)
         ftp.quit()
-        with io.open(dest, 'w') as f:
+        with io.open(local_path, 'w') as f:
             for line in lines:
                 f.write(line + "\n")
         return
 
 
-    def del_member(self, relative_path, member):
-        dest_member = '' + member
-        if member.startswith('-read only-'):
-            member = member.replace('-read only-','')
-        if member.startswith('-ascii-'):
-            member = member.replace('-ascii-','')
-        if member.startswith('-1047-'):
-            member = member.replace('-1047-','')
-        if member[0] == '_':
-            member[0] = '$'
-        source_member = '' + member
-        src = ''
-        if is_pds(relative_path):
-            source_member = member.split('.')[0].upper()
-            parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
-            new_parts = []
-            for part in parts:
-                if part[0] == '_':
-                    part[0] = '$'
-                new_parts.append(part)
-            folder = '/'.join(new_parts)
-            src = "'%s(%s)'" % (folder.replace('/','.'), source_member)
-        else:
-            src = "%s/%s" % (relative_path, source_member)
-        backup_file = join(self.path, relative_path, member + ".zos.backup")
-        if Path(backup_file).exists():
-            os.remove(backup_file)
+    def del_member(self, local_path):
+        result = self.parse_local_path(local_path)
+        local_sub_folder = result['local_sub_folder']
+        local_member = result['local_member']
+        remote_path = self._remote_path(local_sub_folder, local_member)
+        backup_path = os.path.join(self.root_path, local_sub_folder, local_member + ZOS_BACKUP_SUFFIX)
+        if Path(backup_path).exists():
+            os.remove(backup_path)
         # ftp
         ftp = ftplib.FTP(self.host)
         ftp.login(self.user, self.password)
-        ftp.delete(src)
+        ftp.delete(remote_path)
         ftp.quit()
-        return src
+        return remote_path
 
-    def put_member(self, relative_path, member, force=False):
-        if member.startswith('-read only-'):
+    def put_member(self, local_path, force=False):
+        result = self.parse_local_path(local_path)
+        local_sub_folder = result['local_sub_folder']
+        local_member = result['local_member']
+        if local_member.startswith('-read only-'):
             return 'read only, not uploaded'
-        if (member.endswith('.zos.diff') or member.endswith('.zos.temp')):
+        if (local_member.endswith(ZOS_DIFF_SUFFIX) or local_member.endswith(ZOS_TEMP_SUFFIX)):
             return 'temp file, not uploaded'
-        src_folder = join(self.path, relative_path)
-        dest = ''
-        encoding = 'IBM-037'
-        dest_member = '' + member
-        if member.startswith('-ascii-'):
-            dest_member = member.replace('-ascii-','')
-            encoding = 'ISO8859-1'
-        if member.startswith('-1047-'):
-            dest_member = member.replace('-1047-','')
-            encoding = 'IBM-1047'
-        if dest_member[0] == '_':
-            dest_member[0] = '$'
-        if is_pds(relative_path):
-            parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
-            new_parts = []
-            for part in parts:
-                if part[0] == '_':
-                    part[0] = '$'
-                new_parts.append(part)
-            folder = '/'.join(new_parts)
-            dest = "'%s(%s)'" % (folder.replace('/','.'), dest_member.split('.')[0])
-        else:
-            dest = "/%s/%s" % (relative_path, dest_member)
-        src = join(src_folder, member)
-        backup_file = src + ".zos.backup"
-        temp_file = src + ".zos.temp"
-        diff_file = src + ".zos.diff"
-        if Path(backup_file).exists() and force is False:
+        encoding = self._encoding(local_member)
+        remote_path = self._remote_path(local_sub_folder, local_member)
+        backup_path = local_path + ZOS_BACKUP_SUFFIX
+        temp_path = local_path + ZOS_TEMP_SUFFIX
+        diff_path = local_path + ZOS_DIFF_SUFFIX
+        if Path(backup_path).exists() and force is False:
             # get the file first to compare with the backup
             try:
-                self._download_txt_file(dest, temp_file, encoding)
+                self._download_txt_file(remote_path, temp_path, encoding)
             except Exception as e:
-                if Path(temp_file).exists():
-                    os.remove(temp_file)
+                if Path(temp_path).exists():
+                    os.remove(temp_path)
                 raise e
-            if filecmp.cmp(temp_file, backup_file):
-                if Path(temp_file).exists():
-                    os.remove(temp_file)
+            if filecmp.cmp(temp_path, backup_path):
+                if Path(temp_path).exists():
+                    os.remove(temp_path)
             else:
-                command = "diff -DVERSION1 '%s' '%s' > '%s'" % (temp_file,
-                        backup_file, diff_file)
+                command = "diff -DVERSION1 '%s' '%s' > '%s'" % (temp_path,
+                        backup_path, diff_path)
                 # puts command
                 os.system(command)
-                if Path(temp_file).exists():
-                    os.remove(temp_file)
-                return "file changed, check the diff file " + diff_file
-        print("uploading ", src)
-        print("to ", dest)
+                if Path(temp_path).exists():
+                    os.remove(temp_path)
+                return "file changed, check the diff file " + diff_path
         ftp = ftplib.FTP(self.host)
         ftp.login(self.user, self.password)
         cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
         ftp.sendcmd(cmd)
-        with io.open(src, 'rb') as f:
-            ftp.storlines('STOR ' + dest, f)
+        with io.open(local_path, 'rb') as f:
+            ftp.storlines('STOR ' + remote_path, f)
         ftp.quit()
-        print("uploading done", src)
-        print("downloading backup_file")
-        self._download_txt_file(dest, backup_file, encoding)
-        print("downloading backup_file done")
-        if Path(diff_file).exists():
-            os.remove(diff_file)
+        self._download_txt_file(remote_path, backup_path, encoding)
+        if Path(diff_path).exists():
+            os.remove(diff_path)
         print("return")
         return ''
+
+    def parse_local_path(self, local_path):
+        result = {}
+        relative_path = os.path.relpath(local_path, self.root_path)
+        parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
+        if (Path(local_path).is_dir() is not True):
+            result['local_member'] = parts.pop()
+        result['local_sub_folder'] = '/'.join(parts)
+        return result
+
+    def refresh_files(self, force_delete=False, force_replace=False):
+        for dir_path, dirs, files in os.walk(self.root_path):
+            for file_name in files:
+                local_path = os.path.join(dir_path, file_name)
+                if file_name.endswith(ZOS_BACKUP_SUFFIX):
+                    continue
+                if file_name.endswith(ZOS_TEMP_SUFFIX):
+                    continue
+                if file_name.endswith(ZOS_DIFF_SUFFIX):
+                    continue
+                if file_name.startswith("."):
+                    continue
+                backup_path = local_path + ZOS_BACKUP_SUFFIX
+                temp_path = local_path + ZOS_TEMP_SUFFIX
+                diff_path = local_path + ZOS_DIFF_SUFFIX
+                try:
+                    result = self.parse_local_path(local_path)
+                    local_sub_folder = result['local_sub_folder']
+                    if local_sub_folder.startswith('_spool'):
+                        continue
+                    local_member = result['local_member']
+                    encoding = self._encoding(local_member)
+                    remote_path = self._remote_path(local_sub_folder, local_member)
+                    self._download_txt_file(remote_path, temp_path, encoding)
+                except Exception as e:
+                    print("Exception: ", str(e))
+                    if Path(temp_path).exists():
+                        os.remove(temp_path)
+                    if (((str(e).find('nonexistent') != -1) or
+                        (str(e).find('does not exist.') != -1)) and
+                        force_delete):
+                            os.remove(local_path)
+                            if Path(diff_path).exists():
+                                os.remove(diff_path)
+                            print("Force deleted %s from local" % local_path)
+                    continue
+
+                if Path(backup_path).exists():
+                    if filecmp.cmp(temp_path, backup_path):
+                        os.remove(temp_path)
+                        if Path(diff_path).exists():
+                            os.remove(diff_path)
+                    else:
+                        if force_replace:
+                            os.remove(local_path)
+                            shutil.move(temp_path, local_path)
+                            if Path(backup_path).exists():
+                                os.remove(backup_path)
+                            shutil.copyfile(local_path, backup_path)
+                            if Path(diff_path).exists():
+                                os.remove(diff_path)
+                            print(local_path + ' replaced in local!')
+                        else:
+                            command = "diff -DVERSION1 '%s' '%s' > '%s'" % (temp_path, backup_path, diff_path)
+                            os.system(command)
+                            if Path(temp_path).exists():
+                                os.remove(temp_path)
+                            print("Difference found for %s, check the diff file" % local_path)
+                else:
+                    shutil.move(temp_path, backup_path)
+                    if Path(diff_path).exists():
+                        os.remove(diff_path)
+        print("Done")
