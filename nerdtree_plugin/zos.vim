@@ -540,7 +540,7 @@ if status == "member found":
             result = "-read only-" + result
             break
         elif (prefix == '2'):
-            result = "-asscii-" + result
+            result = "-ascii-" + result
             break
         elif (prefix == '3'):
             result = "-1047-" + result
