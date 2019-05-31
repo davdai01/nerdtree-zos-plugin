@@ -174,6 +174,8 @@ class Connection:
     @staticmethod
     def _sanitize_remote_member(local_member):
         remote_member = '' + local_member
+        if remote_member.startswith('-auto cvt-'):
+            remote_member = remote_member.replace('-auto cvt-','')
         if remote_member.startswith('-read only-'):
             remote_member = remote_member.replace('-read only-','')
         if remote_member.startswith('-ascii-'):
@@ -208,6 +210,8 @@ class Connection:
             encoding = 'ISO8859-1'
         if local_member.startswith('-1047-'):
             encoding = 'IBM-1047'
+        if local_member.startswith('-auto cvt-'):
+            encoding = 'auto-cvt'
         return encoding
 
     @staticmethod
@@ -236,9 +240,10 @@ class Connection:
         # ftp
         ftp = ftplib.FTP(self.host)
         ftp.login(self.user, self.password)
-        cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
-        # puts cmd
-        ftp.sendcmd(cmd)
+        if encoding != 'auto-cvt':
+            cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
+            # puts cmd
+            ftp.sendcmd(cmd)
         lines = []
         ftp.retrlines('RETR ' + remote_path, lines.append)
         ftp.quit()
@@ -297,8 +302,9 @@ class Connection:
                 return "file changed, check the diff file " + diff_path
         ftp = ftplib.FTP(self.host)
         ftp.login(self.user, self.password)
-        cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
-        ftp.sendcmd(cmd)
+        if encoding != 'auto-cvt':
+            cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
+            ftp.sendcmd(cmd)
         with io.open(local_path, 'rb') as f:
             ftp.storlines('STOR ' + remote_path, f)
         ftp.quit()

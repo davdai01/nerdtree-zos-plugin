@@ -531,10 +531,13 @@ while not_finished:
 if status == "member found":
     not_finished = True
     while not_finished:
-        prompt = "special attributes [0-none]/1-read only/2-ascii/3-1047: "
+        prompt = "special attributes [-IBM037]/0-auto cvt/1-read only/2-ascii/3-1047: "
         vim.command("let prefix = input('%s')" % prompt)
         prefix = vim.eval('prefix')
         if (prefix == ''):
+            break
+        elif (prefix == '0'):
+            result = "-auto cvt-" + result
             break
         elif (prefix == '1'):
             result = "-read only-" + result
