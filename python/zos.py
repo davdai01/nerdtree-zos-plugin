@@ -174,8 +174,6 @@ class Connection:
     @staticmethod
     def _sanitize_remote_member(local_member):
         remote_member = '' + local_member
-        if remote_member.startswith('-auto cvt-'):
-            remote_member = remote_member.replace('-auto cvt-','')
         if remote_member.startswith('-read only-'):
             remote_member = remote_member.replace('-read only-','')
         if remote_member.startswith('-ascii-'):
@@ -210,8 +208,6 @@ class Connection:
             encoding = 'ISO8859-1'
         if local_member.startswith('-1047-'):
             encoding = 'IBM-1047'
-        if local_member.startswith('-auto cvt-'):
-            encoding = 'auto-cvt'
         return encoding
 
     @staticmethod
@@ -240,16 +236,25 @@ class Connection:
         # ftp
         ftp = ftplib.FTP(self.host)
         ftp.login(self.user, self.password)
-        if encoding != 'auto-cvt':
+        print('encoding:' + encoding)
+        if encoding == 'ISO8859-1':
+            print('binary mode')
+            # ftp.sendcmd('BIN')
+            with io.open(local_path, 'wb') as f:
+                ftp.retrbinary('RETR ' + remote_path, f.write)
+            ftp.quit()
+        else:
+            print('ascii mode')
             cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
             # puts cmd
+            print(cmd)
             ftp.sendcmd(cmd)
-        lines = []
-        ftp.retrlines('RETR ' + remote_path, lines.append)
-        ftp.quit()
-        with io.open(local_path, 'w') as f:
-            for line in lines:
-                f.write(line + "\n")
+            lines = []
+            ftp.retrlines('RETR ' + remote_path, lines.append)
+            ftp.quit()
+            with io.open(local_path, 'w') as f:
+                for line in lines:
+                    f.write(line + "\n")
         return
 
 
@@ -302,12 +307,16 @@ class Connection:
                 return "file changed, check the diff file " + diff_path
         ftp = ftplib.FTP(self.host)
         ftp.login(self.user, self.password)
-        if encoding != 'auto-cvt':
+        if encoding == 'ISO8859-1':
+            with io.open(local_path, 'rb') as f:
+                ftp.storbinary('STOR ' + remote_path, f)
+            ftp.quit()
+        else:
             cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
             ftp.sendcmd(cmd)
-        with io.open(local_path, 'rb') as f:
-            ftp.storlines('STOR ' + remote_path, f)
-        ftp.quit()
+            with io.open(local_path, 'rb') as f:
+                ftp.storlines('STOR ' + remote_path, f)
+            ftp.quit()
         self._download_txt_file(remote_path, backup_path, encoding)
         if Path(diff_path).exists():
             os.remove(diff_path)

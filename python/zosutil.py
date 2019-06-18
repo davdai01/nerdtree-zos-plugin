@@ -7,7 +7,7 @@ import zos
 def get_connection(path):
     file_path = os.path.join(path, zos.ZOS_CONN_FILE)
     with io.open(file_path, 'r') as stream:
-        data = yaml.load(stream)
+        data = yaml.load(stream, Loader=yaml.FullLoader)
     host = data['host']
     user  = data['user']
     cipher = zos.AESCipher()
@@ -18,7 +18,7 @@ def get_connection(path):
 def update_connection(path, host, user, password):
     file_path = os.path.join(path,  zos.ZOS_CONN_FILE)
     with io.open(file_path, 'r') as stream:
-        data = yaml.load(stream)
+        data = yaml.load(stream, Loader=yaml.FullLoader)
     if host != '':
         data['host'] = host
     if user != '':
@@ -55,7 +55,7 @@ def zos_update_password(password):
             file_path = os.path.join(dir_path, zos.ZOS_CONN_FILE)
             if Path(file_path).exists():
                 with io.open(file_path, 'r') as stream:
-                    data = yaml.load(stream)
+                    data = yaml.load(stream, Loader=yaml.FullLoader)
                 data['password'] = encrypted
                 with io.open(file_path, 'w') as f:
                     yaml.dump(data, f, default_flow_style=False)
