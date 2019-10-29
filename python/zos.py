@@ -236,25 +236,26 @@ class Connection:
         # ftp
         ftp = ftplib.FTP(self.host)
         ftp.login(self.user, self.password)
-        print('encoding:' + encoding)
+        # print('encoding:' + encoding)
         if encoding == 'ISO8859-1':
-            print('binary mode')
+            # print('binary mode')
             # ftp.sendcmd('BIN')
             with io.open(local_path, 'wb') as f:
                 ftp.retrbinary('RETR ' + remote_path, f.write)
             ftp.quit()
         else:
-            print('ascii mode')
+            # print('ascii mode')
             cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
 
             # puts cmd
-            print(cmd)
+            # print(cmd)
             ftp.voidcmd(cmd)
             # cmd = "SITE ENCODING=MBCS"
             # ftp.voidcmd(cmd)
             # cmd = "SITE SBD=(%s,UTF-8)" % encoding
             # ftp.voidcmd(cmd)
             lines = []
+            print('Downloading %s' % remote_path)
             ftp.retrlines('RETR ' + remote_path, lines.append)
             ftp.quit()
             with io.open(local_path, 'w') as f:
@@ -345,7 +346,7 @@ class Connection:
         self._download_txt_file(remote_path, backup_path, encoding)
         if Path(diff_path).exists():
             os.remove(diff_path)
-        print("return")
+        # print("return")
         return ''
 
     def parse_local_path(self, local_path):

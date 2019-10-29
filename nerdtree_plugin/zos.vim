@@ -36,6 +36,7 @@ call NERDTreeAddMenuItem({'text': '(y) Update the z/OS connection profile', 'sho
 call NERDTreeAddMenuItem({'text': '(f) Add a PDS of USS folder mapping', 'shortcut': 'f', 'isActiveCallback': 'NERDTreezOSEnabled', 'callback': 'NERDTreeAddFolder'})
 call NERDTreeAddMenuItem({'text': '(l) List members', 'shortcut': 'l', 'isActiveCallback': 'NERDTreezOSFileEnabled',  'callback': 'NERDTreeListMembers'})
 call NERDTreeAddMenuItem({'text': '(r) Refresh(re-download) the member', 'shortcut': 'r', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreeGetMember'})
+call NERDTreeAddMenuItem({'text': '(w) Download the whole dataset/directory', 'shortcut': 'w', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreeGetFolder'})
 call NERDTreeAddMenuItem({'text': '(u) Force update the z/OS copy with the local copy', 'shortcut': 'u', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreePutMember'})
 call NERDTreeAddMenuItem({'text': '(s) Retrieve SDSF spool', 'shortcut': 's', 'isActiveCallback': 'NERDTreezOSEnabled',  'callback': 'NERDTreeSDSFList'})
 call NERDTreeAddMenuItem({'text': '(i) Retrieve job output', 'shortcut': 'i', 'isActiveCallback': 'NERDTreeSDSFEnabled',  'callback': 'NERDTreeSDSFGet'})
@@ -351,6 +352,72 @@ EOF
       call zOSNode.refresh()
       call b:NERDTree.render()
       call s:echo('Folder added')
+    endif
+  endif
+endfunction
+
+function! NERDTreeGetFolder()
+  let currentNode = g:NERDTreeFileNode.GetSelected()
+  let zOSNode = s:InZOSFolder(currentNode)
+  if !empty(zOSNode)
+    let rc = 0
+python3 << EOF
+try:
+    zos_path = vim.eval('zOSNode.path.str()')
+    curr_path = vim.eval('currentNode.path.str()')
+    conn = zosutil.get_connection(zos_path)
+    local_sub_folder = conn.parse_local_path(curr_path)['local_sub_folder']
+    lines = conn.list_folder(curr_path)
+
+    prefix=''
+    suffix=''
+    if len(lines) > 1:
+        not_finished = True
+        while not_finished:
+            prompt = "special attributes that will be applied to all members [-IBM037]/1-read only/2-ascii/3-1047: "
+            vim.command("let prefix = input('%s')" % prompt)
+            prefix = vim.eval('prefix')
+            if (prefix == ''):
+                break
+            elif (prefix == '1'):
+                break
+            elif (prefix == '2'):
+                break
+            elif (prefix == '3'):
+                break
+
+        prompt = "file suffix for all members: "
+        vim.command("let suffix = input('%s')" % prompt)
+        suffix = vim.eval('suffix')
+
+        for l in lines[1:]:
+            result = ''
+            # pds
+            if local_sub_folder[0].upper() == local_sub_folder[0]:
+                result = l[0:8].strip()
+            # unix
+            else:
+                result = l[54:].strip()
+
+            if (prefix == '1'):
+                result = "-read only-" + result
+            elif (prefix == '2'):
+                result = "-ascii-" + result
+            elif (prefix == '3'):
+                result = "-1047-" + result
+            if suffix != '':
+                result = result + '.' + suffix
+            local_path = os.path.join(zos_path, local_sub_folder, result)
+            new_path = conn.get_member(local_path)
+except Exception as e:
+    vim.command('let rc = 1')
+    raise e
+EOF
+    if rc == 0
+      call zOSNode.refresh()")
+      call b:NERDTree.render()")
+      redraw
+      call s:echo('Folder downloaded')
     endif
   endif
 endfunction
