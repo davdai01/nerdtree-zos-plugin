@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 from Crypto import Random
 from Crypto.Cipher import AES
-
+import codecs
 ZOS_BACKUP_SUFFIX = ".zos.backup"
 ZOS_TEMP_SUFFIX = ".zos.temp"
 ZOS_DIFF_SUFFIX = ".zos.diff"
@@ -246,9 +246,14 @@ class Connection:
         else:
             print('ascii mode')
             cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
+
             # puts cmd
             print(cmd)
-            ftp.sendcmd(cmd)
+            ftp.voidcmd(cmd)
+            # cmd = "SITE ENCODING=MBCS"
+            # ftp.voidcmd(cmd)
+            # cmd = "SITE SBD=(%s,UTF-8)" % encoding
+            # ftp.voidcmd(cmd)
             lines = []
             ftp.retrlines('RETR ' + remote_path, lines.append)
             ftp.quit()
@@ -313,10 +318,30 @@ class Connection:
             ftp.quit()
         else:
             cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
-            ftp.sendcmd(cmd)
-            with io.open(local_path, 'rb') as f:
+            ftp.voidcmd(cmd)
+            # cmd = "SITE ENCODING=MBCS"
+            # ftp.voidcmd(cmd)
+            # cmd = "SITE SBD=(%s,UTF-8)" % encoding
+            # ftp.voidcmd(cmd)
+
+            # vim is saving the file as utf-8 encoding, ftp server expect the
+            # file to use ascii encoding, we need to convert it from utf-8 to
+            # ascii first before uploading the file
+            local_temp_ascii_path = local_path + '.temp.ascii'
+            Path(local_temp_ascii_path).touch()
+            BLOCKSIZE = 1048576 # or some other, desired size in bytes
+            with codecs.open(local_path, "r", "utf-8") as sourceFile:
+                with codecs.open(local_temp_ascii_path, "w", "ISO8859-1") as targetFile:
+                    while True:
+                        contents = sourceFile.read(BLOCKSIZE)
+                        if not contents:
+                            break
+                        targetFile.write(contents)
+            # with io.open(local_path, 'rb') as f:
+            with io.open(local_temp_ascii_path, 'rb') as f:
                 ftp.storlines('STOR ' + remote_path, f)
             ftp.quit()
+            os.remove(local_temp_ascii_path)
         self._download_txt_file(remote_path, backup_path, encoding)
         if Path(diff_path).exists():
             os.remove(diff_path)
