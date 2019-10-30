@@ -36,7 +36,7 @@ call NERDTreeAddMenuItem({'text': '(y) Update the z/OS connection profile', 'sho
 call NERDTreeAddMenuItem({'text': '(f) Add a PDS of USS folder mapping', 'shortcut': 'f', 'isActiveCallback': 'NERDTreezOSEnabled', 'callback': 'NERDTreeAddFolder'})
 call NERDTreeAddMenuItem({'text': '(l) List members', 'shortcut': 'l', 'isActiveCallback': 'NERDTreezOSFileEnabled',  'callback': 'NERDTreeListMembers'})
 call NERDTreeAddMenuItem({'text': '(r) Refresh(re-download) the member', 'shortcut': 'r', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreeGetMember'})
-call NERDTreeAddMenuItem({'text': '(w) Download the whole dataset/directory', 'shortcut': 'w', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreeGetFolder'})
+call NERDTreeAddMenuItem({'text': '(w) Download the whole dataset/directory', 'shortcut': 'w', 'isActiveCallback': 'NERDTreezOSFileEnabled',  'callback': 'NERDTreeGetFolder'})
 call NERDTreeAddMenuItem({'text': '(u) Force update the z/OS copy with the local copy', 'shortcut': 'u', 'isActiveCallback': 'NERDTreezOSMember',  'callback': 'NERDTreePutMember'})
 call NERDTreeAddMenuItem({'text': '(s) Retrieve SDSF spool', 'shortcut': 's', 'isActiveCallback': 'NERDTreezOSEnabled',  'callback': 'NERDTreeSDSFList'})
 call NERDTreeAddMenuItem({'text': '(i) Retrieve job output', 'shortcut': 'i', 'isActiveCallback': 'NERDTreeSDSFEnabled',  'callback': 'NERDTreeSDSFGet'})
