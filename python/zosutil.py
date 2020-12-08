@@ -10,17 +10,20 @@ def get_connection(path):
         data = yaml.load(stream, Loader=yaml.FullLoader)
     host = data['host']
     user  = data['user']
+    port  = data['port']
     cipher = zos.AESCipher()
     password = cipher.decrypt(data['password'])
-    conn = zos.Connection(path, host, user, password)
+    conn = zos.Connection(path, host, port, user, password)
     return conn
 
-def update_connection(path, host, user, password):
+def update_connection(path, host, port, user, password):
     file_path = os.path.join(path,  zos.ZOS_CONN_FILE)
     with io.open(file_path, 'r') as stream:
         data = yaml.load(stream, Loader=yaml.FullLoader)
     if host != '':
         data['host'] = host
+    if port != '':
+        data['port'] = port
     if user != '':
         data['user'] = user
     if password != '':
@@ -30,7 +33,7 @@ def update_connection(path, host, user, password):
     with io.open(file_path, 'w') as f:
         yaml.dump(data, f, default_flow_style=False)
 
-def add_connection(path, host, user, password):
+def add_connection(path, host, port, user, password):
     if Path(path).exists():
        raise Exception('Connection folder already exists')
     Path(os.path.join(path, '_spool')).mkdir(parents=True, exist_ok=True)
@@ -40,6 +43,7 @@ def add_connection(path, host, user, password):
     encrypted = cipher.encrypt(password)
     data = {}
     data['host'] = host
+    data['port'] = port
     data['user'] = user
     data['password'] = encrypted
     with io.open(file_path, 'w') as f:

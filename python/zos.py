@@ -45,12 +45,13 @@ class AESCipher:
         return s[:-ord(s[len(s)-1:])]
 
 class Connection:
-    def __init__(self, path, host, user, password):
+    def __init__(self, path, host, port, user, password):
         self.root_path = path
         self.host = host
+        self.port = port
         self.user = user
         self.password = password
-        self.conn = http.client.HTTPSConnection(self.host, port=11443, context=ssl._create_unverified_context())
+        self.conn = http.client.HTTPSConnection(self.host, port=port, context=ssl._create_unverified_context())
         userAndPass = base64.b64encode(bytes(self.user + ':' + self.password, "utf-8")).decode("ascii")
         self.headers = {}
         self.headers['Authorization'] = 'Basic ' +  userAndPass

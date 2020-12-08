@@ -194,12 +194,13 @@ endfunction
 function! NERDTreeAddConnection()
   let name = input('Input the connection profile name: ')
   let host = input('Input the host address: ')
+  let port = input('Input the port number of zOSMF server: ')
   let user = input('Input the user id: ')
   let password = input('Input the password: ')
   let rc = 0
 python3 << EOF
 try:
-    zosutil.add_connection('./' + vim.eval('name'), vim.eval('host'), vim.eval('user'), vim.eval('password'))
+    zosutil.add_connection('./' + vim.eval('name'), vim.eval('host'), vim.eval('port'), vim.eval('user'), vim.eval('password'))
 except Exception as e:
     vim.command('let rc = 1')
     raise e
@@ -212,6 +213,7 @@ endfunction
 
 function! NERDTreeUpdateConnection()
   let host = input('Input the host address (Press ENTER if no change): ')
+  let port = input('Input the port number of zOSMF server (Press ENTER if no change): ')
   let user = input('Input the user id (Press ENTER if no change): ')
   let password = input('Input the password (Press ENTER if no change): ')
   let currentNode = g:NERDTreeFileNode.GetSelected()
@@ -221,7 +223,7 @@ function! NERDTreeUpdateConnection()
     python3 << EOF
 zos_path = vim.eval('zOSNode.path.str()')
 try:
-    zosutil.update_connection(zos_path, vim.eval('host'), vim.eval('user'), vim.eval('password'))
+    zosutil.update_connection(zos_path, vim.eval('host'), vim.eval('port'), vim.eval('user'), vim.eval('password'))
 except Exception as e:
     vim.command('let rc = 1')
     raise e
