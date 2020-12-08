@@ -1,15 +1,17 @@
 import vim
 import os
 import io
+import ssl
 import base64
 import ftplib
+import http.client
 import hashlib
 import filecmp
 import shutil
 from pathlib import Path
 from Crypto import Random
 from Crypto.Cipher import AES
-import codecs
+# import codecs
 ZOS_BACKUP_SUFFIX = ".zos.backup"
 ZOS_TEMP_SUFFIX = ".zos.temp"
 ZOS_DIFF_SUFFIX = ".zos.diff"
@@ -48,6 +50,12 @@ class Connection:
         self.host = host
         self.user = user
         self.password = password
+        self.conn = http.client.HTTPSConnection(self.host, port=11443, context=ssl._create_unverified_context())
+        userAndPass = base64.b64encode(bytes(self.user + ':' + self.password, "utf-8")).decode("ascii")
+        self.headers = {}
+        self.headers['Authorization'] = 'Basic ' +  userAndPass
+        self.headers['Content-Type'] = 'text/plain; charset=UTF-8'
+        self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=IBM-037'
 
     def list_folder(self, local_path):
         result = self.parse_local_path(local_path)
@@ -233,34 +241,52 @@ class Connection:
         return local_path
 
     def _download_txt_file(self, remote_path, local_path, encoding='IBM-037'):
+        url_path = '/zosmf/restfiles/ds/' + remote_path.replace("'", '')
+        print(url_path)
+        self.headers['Content-Type'] = 'text/plain; charset=UTF-8'
+        self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=' + encoding
+        with io.open(local_path, 'w') as f:
+            # data = f.read()
+            self.conn.request("GET", url_path, headers=self.headers)
+            response = self.conn.getresponse()
+            print(response.status)
+            print(response.reason)
+            f.write(response.read().decode())
+        self.conn.close()
         # ftp
-        ftp = ftplib.FTP(self.host)
-        ftp.login(self.user, self.password)
+        # ftp = ftplib.FTP(self.host)
+        # ftp.login(self.user, self.password)
         # print('encoding:' + encoding)
-        if encoding == 'ISO8859-1':
-            # print('binary mode')
-            # ftp.sendcmd('BIN')
-            with io.open(local_path, 'wb') as f:
-                ftp.retrbinary('RETR ' + remote_path, f.write)
-            ftp.quit()
-        else:
+        # if encoding == 'ISO8859-1':
+        #     print('binary mode')
+        #     # # ftp.sendcmd('BIN')
+        #     # with io.open(local_path, 'wb') as f:
+        #     #     ftp.retrbinary('RETR ' + remote_path, f.write)
+        #     # ftp.quit()
+        # else:
             # print('ascii mode')
-            cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
-
-            # puts cmd
-            # print(cmd)
-            ftp.voidcmd(cmd)
-            # cmd = "SITE ENCODING=MBCS"
+                # # print(local_path)
+                # # print(response.read().decode())
+                # data = response.read().decode()
+                # print(data)
+                # f.write(response.read().decode())
+                # print(response.msg)
+            # cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
+            #
+            # # puts cmd
+            # # print(cmd)
             # ftp.voidcmd(cmd)
-            # cmd = "SITE SBD=(%s,UTF-8)" % encoding
-            # ftp.voidcmd(cmd)
-            lines = []
-            print('Downloading %s' % remote_path)
-            ftp.retrlines('RETR ' + remote_path, lines.append)
-            ftp.quit()
-            with io.open(local_path, 'w') as f:
-                for line in lines:
-                    f.write(line + "\n")
+            # # cmd = "SITE ENCODING=MBCS"
+            # # ftp.voidcmd(cmd)
+            # # cmd = "SITE SBD=(%s,UTF-8)" % encoding
+            # # ftp.voidcmd(cmd)
+            # lines = []
+            # print('Downloading %s' % remote_path)
+            # ftp.retrlines('RETR ' + remote_path, lines.append)
+            # ftp.quit()
+            # with io.open(local_path, 'w') as f:
+            #     for line in lines:
+            #         f.write(line + "\n")
         return
 
 
@@ -292,7 +318,15 @@ class Connection:
         backup_path = local_path + ZOS_BACKUP_SUFFIX
         temp_path = local_path + ZOS_TEMP_SUFFIX
         diff_path = local_path + ZOS_DIFF_SUFFIX
-        if Path(backup_path).exists() and force is False:
+
+        if filecmp.cmp(local_path, backup_path) is True:
+            return ''
+
+        url_path = '/zosmf/restfiles/ds/' + remote_path.replace("'", '')
+        self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=' + encoding
+
+        # if Path(backup_path).exists() and force is False:
+        if Path(backup_path).exists():
             # get the file first to compare with the backup
             try:
                 self._download_txt_file(remote_path, temp_path, encoding)
@@ -301,49 +335,93 @@ class Connection:
                     os.remove(temp_path)
                 raise e
             if filecmp.cmp(temp_path, backup_path):
-                if Path(temp_path).exists():
-                    os.remove(temp_path)
-            else:
-                command = "diff -DVERSION1 '%s' '%s' > '%s'" % (temp_path,
-                        backup_path, diff_path)
-                # puts command
+                command = "diff -e '%s' '%s' > '%s'" % (temp_path,
+                        local_path, diff_path)
                 os.system(command)
-                if Path(temp_path).exists():
-                    os.remove(temp_path)
-                return "file changed, check the diff file " + diff_path
-        ftp = ftplib.FTP(self.host)
-        ftp.login(self.user, self.password)
-        if encoding == 'ISO8859-1':
-            with io.open(local_path, 'rb') as f:
-                ftp.storbinary('STOR ' + remote_path, f)
-            ftp.quit()
+            else:
+                if force is True:
+                    command = "diff -e '%s' '%s' > '%s'" % (temp_path,
+                            local_path, diff_path)
+                    os.system(command)
+                else:
+                    command = "diff -DVERSION1 '%s' '%s' > '%s'" % (temp_path,
+                            backup_path, diff_path)
+                    # puts command
+                    os.system(command)
+                    if Path(temp_path).exists():
+                        os.remove(temp_path)
+                    return "file changed, check the diff file " + diff_path
+            if Path(temp_path).exists():
+                os.remove(temp_path)
+            print('diff')
+            self.headers['Content-Type'] = 'application/x-ibm-diff-e; charset=UTF-8'
+            with io.open(diff_path, 'r') as f:
+                data = f.read()
+                self.conn.request("PUT", url_path, data, self.headers)
+            response = self.conn.getresponse()
+            print(response.status)
+            print(response.reason)
+            self.conn.close()
         else:
-            cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
-            ftp.voidcmd(cmd)
-            # cmd = "SITE ENCODING=MBCS"
+            self.headers['Content-Type'] = 'text/plain; charset=UTF-8'
+            with io.open(local_path, 'r') as f:
+                data = f.read()
+                self.conn.request("PUT", url_path, data, self.headers)
+            response = self.conn.getresponse()
+            print(response.status)
+            print(response.reason)
+            self.conn.close()
+        #
+        #
+        # data = ''
+        # url_path = '/zosmf/restfiles/ds/' + remote_path.replace("'", '')
+        # print(url_path)
+        # self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=' + encoding
+        # with io.open(local_path, 'r') as f:
+        #     data = f.read()
+        #     self.conn.request("PUT", url_path, data, self.headers)
+        # response = self.conn.getresponse()
+        # print(response.status)
+        # print(response.reason)
+        # # print(response.msg)
+        # self.conn.close()
+        #
+        # ftp = ftplib.FTP(self.host)
+        # ftp.login(self.user, self.password)
+        # if encoding == 'ISO8859-1':
+        #     # with io.open(local_path, 'rb') as f:
+        #     #     ftp.storbinary('STOR ' + remote_path, f)
+        #     # ftp.quit()
+        #     print('xx')
+        # else:
+        #
+            # cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
             # ftp.voidcmd(cmd)
-            # cmd = "SITE SBD=(%s,UTF-8)" % encoding
-            # ftp.voidcmd(cmd)
-
-            # vim is saving the file as utf-8 encoding, ftp server expect the
-            # file to use ascii encoding, we need to convert it from utf-8 to
-            # ascii first before uploading the file
-            local_temp_ascii_path = local_path + '.temp.ascii'
-            Path(local_temp_ascii_path).touch()
-            BLOCKSIZE = 1048576 # or some other, desired size in bytes
-            with codecs.open(local_path, "r", "utf-8") as sourceFile:
-                with codecs.open(local_temp_ascii_path, "w", "ISO8859-1") as targetFile:
-                    while True:
-                        contents = sourceFile.read(BLOCKSIZE)
-                        if not contents:
-                            break
-                        targetFile.write(contents)
-            # with io.open(local_path, 'rb') as f:
-            with io.open(local_temp_ascii_path, 'rb') as f:
-                ftp.storlines('STOR ' + remote_path, f)
-            ftp.quit()
-            os.remove(local_temp_ascii_path)
-        self._download_txt_file(remote_path, backup_path, encoding)
+            # # cmd = "SITE ENCODING=MBCS"
+            # # ftp.voidcmd(cmd)
+            # # cmd = "SITE SBD=(%s,UTF-8)" % encoding
+            # # ftp.voidcmd(cmd)
+            #
+            # # vim is saving the file as utf-8 encoding, ftp server expect the
+            # # file to use ascii encoding, we need to convert it from utf-8 to
+            # # ascii first before uploading the file
+            # local_temp_ascii_path = local_path + '.temp.ascii'
+            # Path(local_temp_ascii_path).touch()
+            # BLOCKSIZE = 1048576 # or some other, desired size in bytes
+            # with codecs.open(local_path, "r", "utf-8") as sourceFile:
+            #     with codecs.open(local_temp_ascii_path, "w", "ISO8859-1") as targetFile:
+            #         while True:
+            #             contents = sourceFile.read(BLOCKSIZE)
+            #             if not contents:
+            #                 break
+            #             targetFile.write(contents)
+            # # with io.open(local_path, 'rb') as f:
+            # with io.open(local_temp_ascii_path, 'rb') as f:
+            #     ftp.storlines('STOR ' + remote_path, f)
+            # ftp.quit()
+            # os.remove(local_temp_ascii_path)
+        # self._download_txt_file(remote_path, backup_path, encoding)
+        shutil.copyfile(local_path, backup_path)
         if Path(diff_path).exists():
             os.remove(diff_path)
         # print("return")
