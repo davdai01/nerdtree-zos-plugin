@@ -245,9 +245,15 @@ class Connection:
         url_path = '/zosmf/restfiles/ds/' + remote_path.replace("'", '')
         if pds is not True:
             url_path = '/zosmf/restfiles/fs' + remote_path
+            # for uss, always set to IBM-1047
+            # if the file is already tagged, auto-conversion should happen
+            # if the file is not tagged, then it's treated as IBM-1047 by
+            # default
+            self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=IBM-1047'
+        else:
+            self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=' + encoding
         print(url_path)
         self.headers['Content-Type'] = 'text/plain; charset=UTF-8'
-        self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=' + encoding
         with io.open(local_path, 'w') as f:
             # data = f.read()
             self.conn.request("GET", url_path, headers=self.headers)
@@ -256,40 +262,6 @@ class Connection:
             print(response.reason)
             f.write(response.read().decode())
         self.conn.close()
-        # ftp
-        # ftp = ftplib.FTP(self.host)
-        # ftp.login(self.user, self.password)
-        # print('encoding:' + encoding)
-        # if encoding == 'ISO8859-1':
-        #     print('binary mode')
-        #     # # ftp.sendcmd('BIN')
-        #     # with io.open(local_path, 'wb') as f:
-        #     #     ftp.retrbinary('RETR ' + remote_path, f.write)
-        #     # ftp.quit()
-        # else:
-            # print('ascii mode')
-                # # print(local_path)
-                # # print(response.read().decode())
-                # data = response.read().decode()
-                # print(data)
-                # f.write(response.read().decode())
-                # print(response.msg)
-            # cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
-            #
-            # # puts cmd
-            # # print(cmd)
-            # ftp.voidcmd(cmd)
-            # # cmd = "SITE ENCODING=MBCS"
-            # # ftp.voidcmd(cmd)
-            # # cmd = "SITE SBD=(%s,UTF-8)" % encoding
-            # # ftp.voidcmd(cmd)
-            # lines = []
-            # print('Downloading %s' % remote_path)
-            # ftp.retrlines('RETR ' + remote_path, lines.append)
-            # ftp.quit()
-            # with io.open(local_path, 'w') as f:
-            #     for line in lines:
-            #         f.write(line + "\n")
         return
 
 
@@ -325,7 +297,13 @@ class Connection:
         url_path = '/zosmf/restfiles/ds/' + remote_path.replace("'", '')
         if self._is_pds(local_sub_folder) is not True:
             url_path = '/zosmf/restfiles/fs' + remote_path
-        self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=' + encoding
+            # for uss, always set to IBM-1047
+            # if the file is already tagged, auto-conversion should happen
+            # if the file is not tagged, then it's treated as IBM-1047 by
+            # default
+            self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=IBM-1047'
+        else:
+            self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=' + encoding
 
         # if Path(backup_path).exists() and force is False:
         if Path(backup_path).exists():
@@ -375,56 +353,6 @@ class Connection:
             print(response.status)
             print(response.reason)
             self.conn.close()
-        #
-        #
-        # data = ''
-        # url_path = '/zosmf/restfiles/ds/' + remote_path.replace("'", '')
-        # print(url_path)
-        # self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=' + encoding
-        # with io.open(local_path, 'r') as f:
-        #     data = f.read()
-        #     self.conn.request("PUT", url_path, data, self.headers)
-        # response = self.conn.getresponse()
-        # print(response.status)
-        # print(response.reason)
-        # # print(response.msg)
-        # self.conn.close()
-        #
-        # ftp = ftplib.FTP(self.host)
-        # ftp.login(self.user, self.password)
-        # if encoding == 'ISO8859-1':
-        #     # with io.open(local_path, 'rb') as f:
-        #     #     ftp.storbinary('STOR ' + remote_path, f)
-        #     # ftp.quit()
-        #     print('xx')
-        # else:
-        #
-            # cmd = "SITE SBD=(%s,ISO8859-1)" % encoding
-            # ftp.voidcmd(cmd)
-            # # cmd = "SITE ENCODING=MBCS"
-            # # ftp.voidcmd(cmd)
-            # # cmd = "SITE SBD=(%s,UTF-8)" % encoding
-            # # ftp.voidcmd(cmd)
-            #
-            # # vim is saving the file as utf-8 encoding, ftp server expect the
-            # # file to use ascii encoding, we need to convert it from utf-8 to
-            # # ascii first before uploading the file
-            # local_temp_ascii_path = local_path + '.temp.ascii'
-            # Path(local_temp_ascii_path).touch()
-            # BLOCKSIZE = 1048576 # or some other, desired size in bytes
-            # with codecs.open(local_path, "r", "utf-8") as sourceFile:
-            #     with codecs.open(local_temp_ascii_path, "w", "ISO8859-1") as targetFile:
-            #         while True:
-            #             contents = sourceFile.read(BLOCKSIZE)
-            #             if not contents:
-            #                 break
-            #             targetFile.write(contents)
-            # # with io.open(local_path, 'rb') as f:
-            # with io.open(local_temp_ascii_path, 'rb') as f:
-            #     ftp.storlines('STOR ' + remote_path, f)
-            # ftp.quit()
-            # os.remove(local_temp_ascii_path)
-        # self._download_txt_file(remote_path, backup_path, encoding)
         shutil.copyfile(local_path, backup_path)
         if Path(diff_path).exists():
             os.remove(diff_path)
