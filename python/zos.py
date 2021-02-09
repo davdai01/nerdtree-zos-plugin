@@ -233,7 +233,7 @@ class Connection:
         if Path(local_dir_path).exists() is not True:
             Path(local_dir_path).mkdir(parents=True, exist_ok=True)
         local_path  = os.path.join(local_dir_path, local_member)
-        self._download_txt_file(remote_path, local_path, encoding)
+        self._download_txt_file(remote_path, local_path, self._is_pds(local_sub_folder), encoding)
         backup_path = local_path + ZOS_BACKUP_SUFFIX
         diff_path = local_path + ZOS_DIFF_SUFFIX
         shutil.copyfile(local_path, backup_path)
@@ -241,8 +241,10 @@ class Connection:
             os.remove(diff_path)
         return local_path
 
-    def _download_txt_file(self, remote_path, local_path, encoding='IBM-037'):
+    def _download_txt_file(self, remote_path, local_path, pds=True, encoding='IBM-037'):
         url_path = '/zosmf/restfiles/ds/' + remote_path.replace("'", '')
+        if pds is not True:
+            url_path = '/zosmf/restfiles/fs' + remote_path
         print(url_path)
         self.headers['Content-Type'] = 'text/plain; charset=UTF-8'
         self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=' + encoding
@@ -320,17 +322,18 @@ class Connection:
         temp_path = local_path + ZOS_TEMP_SUFFIX
         diff_path = local_path + ZOS_DIFF_SUFFIX
 
-        if filecmp.cmp(local_path, backup_path) is True:
-            return ''
-
         url_path = '/zosmf/restfiles/ds/' + remote_path.replace("'", '')
+        if self._is_pds(local_sub_folder) is not True:
+            url_path = '/zosmf/restfiles/fs' + remote_path
         self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=' + encoding
 
         # if Path(backup_path).exists() and force is False:
         if Path(backup_path).exists():
+            if filecmp.cmp(local_path, backup_path) is True:
+                return ''
             # get the file first to compare with the backup
             try:
-                self._download_txt_file(remote_path, temp_path, encoding)
+                self._download_txt_file(remote_path, temp_path, self._is_pds(local_sub_folder), encoding)
             except Exception as e:
                 if Path(temp_path).exists():
                     os.remove(temp_path)
@@ -460,7 +463,7 @@ class Connection:
                     local_member = result['local_member']
                     encoding = self._encoding(local_member)
                     remote_path = self._remote_path(local_sub_folder, local_member)
-                    self._download_txt_file(remote_path, temp_path, encoding)
+                    self._download_txt_file(remote_path, temp_path, self._is_pds(local_sub_folder), encoding)
                 except Exception as e:
                     print("Exception: ", str(e))
                     if Path(temp_path).exists():
