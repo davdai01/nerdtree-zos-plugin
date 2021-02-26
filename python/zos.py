@@ -21,7 +21,7 @@ class AESCipher:
     def __init__(self):
         self.bs = 32
         secret = 'my little secret'
-        if os.environ['MY_SECRET_KEY'] is not None:
+        if os.environ.get('MY_SECRET_KEY') is not None:
             secret = os.environ['MY_SECRET_KEY']
         self.key = hashlib.sha256(secret.encode()).digest()
 
