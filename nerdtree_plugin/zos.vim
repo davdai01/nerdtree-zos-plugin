@@ -343,6 +343,9 @@ try:
                 part = '_' + part[1:]
             new_parts.append(part)
         member = '/'.join(parts)
+    else:
+        if (name.startswith('/')):
+            member = name[1:]
 
     dest = os.path.join(zos_folder, member)
     Path(dest).mkdir(parents=True, exist_ok=True)
