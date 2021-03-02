@@ -192,7 +192,7 @@ class Connection:
         return remote_member
 
     def _path_to_pds(self, local_sub_folder, local_member):
-        parts = local_sub_folder.split(vim.eval('g:NERDTreePath.Slash()'))
+        parts = local_sub_folder.split(vim.eval('nerdtree#slash()'))
         new_parts = []
         for p in parts:
             if (p[0] == '_'):
@@ -362,7 +362,7 @@ class Connection:
     def parse_local_path(self, local_path):
         result = {}
         relative_path = os.path.relpath(local_path, self.root_path)
-        parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
+        parts = relative_path.split(vim.eval('nerdtree#slash()'))
         if (Path(local_path).is_dir() is not True):
             result['local_member'] = parts.pop()
         result['local_sub_folder'] = '/'.join(parts)

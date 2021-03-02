@@ -270,8 +270,8 @@ function! NERDTreeSDSFGet()
 zos_path = vim.eval('zOSNode.path.str()')
 curr_path = vim.eval('currentNode.path.str()')
 conn = zosutil.get_connection(zos_path)
-relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
-parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
+relative_path = curr_path.replace(zos_path + vim.eval('nerdtree#slash()'),'')
+parts = relative_path.split(vim.eval('nerdtree#slash()'))
 step = None
 if (Path(curr_path).is_dir() is not True):
     step = parts.pop()
@@ -302,8 +302,8 @@ try:
     zos_path = vim.eval('zOSNode.path.str()')
     curr_path = vim.eval('currentNode.path.str()')
     conn = zosutil.get_connection(zos_path)
-    relative_path = curr_path.replace(zos_path + vim.eval('g:NERDTreePath.Slash()'),'')
-    parts = relative_path.split(vim.eval('g:NERDTreePath.Slash()'))
+    relative_path = curr_path.replace(zos_path + vim.eval('nerdtree#slash()'),'')
+    parts = relative_path.split(vim.eval('nerdtree#slash()'))
     if (Path(curr_path).is_dir() is not True):
         parts.pop()
     job = parts.pop()
