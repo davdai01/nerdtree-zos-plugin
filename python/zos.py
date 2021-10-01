@@ -57,6 +57,7 @@ class Connection:
         self.headers['Authorization'] = 'Basic ' +  userAndPass
         self.headers['Content-Type'] = 'text/plain; charset=UTF-8'
         self.headers['X-IBM-Data-Type'] = 'text;fileEncoding=IBM-037'
+        self.headers['X-CSRF-ZOSMF-HEADER'] = ''
 
     def list_folder(self, local_path):
         result = self.parse_local_path(local_path)
