@@ -6,16 +6,24 @@ import base64
 import ftplib
 import http.client
 import hashlib
-import filecmp
 import shutil
 from pathlib import Path
 from Crypto import Random
 from Crypto.Cipher import AES
-# import codecs
 ZOS_BACKUP_SUFFIX = ".zos.backup"
 ZOS_TEMP_SUFFIX = ".zos.temp"
 ZOS_DIFF_SUFFIX = ".zos.diff"
 ZOS_CONN_FILE = ".zos.connection"
+
+
+def comp_file(file1, file2):
+    command = "diff -ab '%s' '%s' > /dev/null" % (file1, file2)
+    rc = os.system(command)
+    if rc == 0:
+        return True
+    else:
+        return False
+
 
 class AESCipher:
     def __init__(self):
@@ -307,7 +315,7 @@ class Connection:
 
         # if Path(backup_path).exists() and force is False:
         if Path(backup_path).exists():
-            if filecmp.cmp(local_path, backup_path) is True:
+            if comp_file(local_path, backup_path) is True:
                 return ''
             # get the file first to compare with the backup
             try:
@@ -316,7 +324,7 @@ class Connection:
                 if Path(temp_path).exists():
                     os.remove(temp_path)
                 raise e
-            if filecmp.cmp(temp_path, backup_path):
+            if comp_file(temp_path, backup_path):
                 command = "diff -e '%s' '%s' > '%s'" % (temp_path,
                         local_path, diff_path)
                 os.system(command)
@@ -406,7 +414,7 @@ class Connection:
                     continue
 
                 if Path(backup_path).exists():
-                    if filecmp.cmp(temp_path, backup_path):
+                    if comp_file(temp_path, backup_path):
                         os.remove(temp_path)
                         if Path(diff_path).exists():
                             os.remove(diff_path)
